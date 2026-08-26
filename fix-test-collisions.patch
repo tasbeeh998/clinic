@@ -1,0 +1,372 @@
+diff --git a/apps/api/src/appointments/appointments.spec.ts b/apps/api/src/appointments/appointments.spec.ts
+index f1f939c..237d42d 100644
+--- a/apps/api/src/appointments/appointments.spec.ts
++++ b/apps/api/src/appointments/appointments.spec.ts
+@@ -53,7 +53,7 @@ describe('Appointments Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.appointments@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -66,7 +66,7 @@ describe('Appointments Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     const receptionist = await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.appointments@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -78,7 +78,7 @@ describe('Appointments Module Tests (E2E)', () => {
+     // Create test patient
+     const patient = await prisma.patient.create({
+       data: {
+-        civilId: '12345678901',
++        civilId: '12345670002',
+         fullNameAr: 'سارة أحمد',
+         fullNameEn: 'Sara Ahmed',
+         phone: '99912345',
+@@ -91,7 +91,7 @@ describe('Appointments Module Tests (E2E)', () => {
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testadmin@test.com',
++        email: 'testadmin.appointments@test.com',
+         password: 'admin123',
+       });
+     adminAccessToken = adminResponse.body.accessToken;
+@@ -99,7 +99,7 @@ describe('Appointments Module Tests (E2E)', () => {
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.appointments@test.com',
+         password: 'receptionist123',
+       });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+diff --git a/apps/api/src/auth/auth.spec.ts b/apps/api/src/auth/auth.spec.ts
+index fadb12c..e51f8ed 100644
+--- a/apps/api/src/auth/auth.spec.ts
++++ b/apps/api/src/auth/auth.spec.ts
+@@ -49,7 +49,7 @@ describe('Authentication Security Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.auth@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -62,7 +62,7 @@ describe('Authentication Security Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     const receptionist = await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.auth@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -123,7 +123,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       const loginResponse = await request(app.getHttpServer())
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'admin123',
+         });
+ 
+@@ -174,14 +174,14 @@ describe('Authentication Security Tests (E2E)', () => {
+       const response = await request(app.getHttpServer())
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'admin123',
+         })
+         .expect(200);
+ 
+       expect(response.body.accessToken).toBeDefined();
+       expect(response.body.user).toBeDefined();
+-      expect(response.body.user.email).toBe('testadmin@test.com');
++      expect(response.body.user.email).toBe('testadmin.auth@test.com');
+       adminAccessToken = response.body.accessToken;
+     });
+ 
+@@ -189,7 +189,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       const response = await request(app.getHttpServer())
+         .post('/api/auth/login')
+         .send({
+-          email: 'testreceptionist@test.com',
++          email: 'testreceptionist.auth@test.com',
+           password: 'receptionist123',
+         })
+         .expect(200);
+@@ -248,7 +248,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       const loginResponse = await agent
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'admin123',
+         })
+         .expect(200);
+@@ -271,7 +271,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       const loginResponse = await agent
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'admin123',
+         })
+         .expect(200);
+@@ -323,7 +323,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       const loginResponse = await request(app.getHttpServer())
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'admin123',
+         });
+ 
+@@ -347,7 +347,7 @@ describe('Authentication Security Tests (E2E)', () => {
+   describe('Password Security', () => {
+     it('should hash passwords with Argon2', async () => {
+       const user = await prisma.user.findUnique({
+-        where: { email: 'testadmin@test.com' },
++        where: { email: 'testadmin.auth@test.com' },
+       });
+ 
+       expect(user.passwordHash).not.toBe('admin123');
+@@ -370,7 +370,7 @@ describe('Authentication Security Tests (E2E)', () => {
+       await request(app.getHttpServer())
+         .post('/api/auth/login')
+         .send({
+-          email: 'testadmin@test.com',
++          email: 'testadmin.auth@test.com',
+           password: 'newadmin123',
+         })
+         .expect(200);
+diff --git a/apps/api/src/invoices/invoices.spec.ts b/apps/api/src/invoices/invoices.spec.ts
+index 952dbe4..9415427 100644
+--- a/apps/api/src/invoices/invoices.spec.ts
++++ b/apps/api/src/invoices/invoices.spec.ts
+@@ -59,7 +59,7 @@ describe('Invoices Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.invoices@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -72,7 +72,7 @@ describe('Invoices Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.invoices@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -83,7 +83,7 @@ describe('Invoices Module Tests (E2E)', () => {
+     // Create test patient
+     const patient = await prisma.patient.create({
+       data: {
+-        civilId: '12345678901',
++        civilId: '12345670001',
+         fullNameAr: 'سارة أحمد',
+         fullNameEn: 'Sara Ahmed',
+         phone: '99912345',
+@@ -122,12 +122,12 @@ describe('Invoices Module Tests (E2E)', () => {
+     // Get tokens once for all tests
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+-      .send({ email: 'testadmin@test.com', password: 'admin123' });
++      .send({ email: 'testadmin.invoices@test.com', password: 'admin123' });
+     adminAccessToken = adminResponse.body.accessToken;
+ 
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+-      .send({ email: 'testreceptionist@test.com', password: 'receptionist123' });
++      .send({ email: 'testreceptionist.invoices@test.com', password: 'receptionist123' });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+   });
+ 
+diff --git a/apps/api/src/patients/patients.spec.ts b/apps/api/src/patients/patients.spec.ts
+index d3e3f77..d4e9fec 100644
+--- a/apps/api/src/patients/patients.spec.ts
++++ b/apps/api/src/patients/patients.spec.ts
+@@ -50,7 +50,7 @@ describe('Patients Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.patients@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -63,7 +63,7 @@ describe('Patients Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     const receptionist = await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.patients@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -76,7 +76,7 @@ describe('Patients Module Tests (E2E)', () => {
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testadmin@test.com',
++        email: 'testadmin.patients@test.com',
+         password: 'admin123',
+       });
+     adminAccessToken = adminResponse.body.accessToken;
+@@ -84,7 +84,7 @@ describe('Patients Module Tests (E2E)', () => {
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.patients@test.com',
+         password: 'receptionist123',
+       });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+diff --git a/apps/api/src/payments/payments.spec.ts b/apps/api/src/payments/payments.spec.ts
+index 6c12273..be6a93e 100644
+--- a/apps/api/src/payments/payments.spec.ts
++++ b/apps/api/src/payments/payments.spec.ts
+@@ -52,7 +52,7 @@ describe('Payments Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.payments@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -64,7 +64,7 @@ describe('Payments Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.payments@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -162,12 +162,12 @@ describe('Payments Module Tests (E2E)', () => {
+ 
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+-      .send({ email: 'testadmin@test.com', password: 'admin123' });
++      .send({ email: 'testadmin.payments@test.com', password: 'admin123' });
+     adminAccessToken = adminResponse.body.accessToken;
+ 
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+-      .send({ email: 'testreceptionist@test.com', password: 'receptionist123' });
++      .send({ email: 'testreceptionist.payments@test.com', password: 'receptionist123' });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+   });
+ 
+diff --git a/apps/api/src/services/services.spec.ts b/apps/api/src/services/services.spec.ts
+index 88437f2..b10876f 100644
+--- a/apps/api/src/services/services.spec.ts
++++ b/apps/api/src/services/services.spec.ts
+@@ -50,7 +50,7 @@ describe('Services Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.services@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -63,7 +63,7 @@ describe('Services Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     const receptionist = await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.services@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -76,7 +76,7 @@ describe('Services Module Tests (E2E)', () => {
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testadmin@test.com',
++        email: 'testadmin.services@test.com',
+         password: 'admin123',
+       });
+     adminAccessToken = adminResponse.body.accessToken;
+@@ -84,7 +84,7 @@ describe('Services Module Tests (E2E)', () => {
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.services@test.com',
+         password: 'receptionist123',
+       });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+diff --git a/apps/api/src/visits/visits.spec.ts b/apps/api/src/visits/visits.spec.ts
+index 66f8538..6a8a1f5 100644
+--- a/apps/api/src/visits/visits.spec.ts
++++ b/apps/api/src/visits/visits.spec.ts
+@@ -55,7 +55,7 @@ describe('Visits Module Tests (E2E)', () => {
+     const adminPasswordHash = await argon2.hash('admin123');
+     const admin = await prisma.user.create({
+       data: {
+-        email: 'testadmin@test.com',
++        email: 'testadmin.visits@test.com',
+         passwordHash: adminPasswordHash,
+         name: 'Test Admin',
+         role: 'ADMIN',
+@@ -68,7 +68,7 @@ describe('Visits Module Tests (E2E)', () => {
+     const receptionistPasswordHash = await argon2.hash('receptionist123');
+     const receptionist = await prisma.user.create({
+       data: {
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.visits@test.com',
+         passwordHash: receptionistPasswordHash,
+         name: 'Test Receptionist',
+         role: 'RECEPTIONIST',
+@@ -80,7 +80,7 @@ describe('Visits Module Tests (E2E)', () => {
+     // Create test patient
+     const patient = await prisma.patient.create({
+       data: {
+-        civilId: '12345678901',
++        civilId: '12345670003',
+         fullNameAr: 'سارة أحمد',
+         fullNameEn: 'Sara Ahmed',
+         phone: '99912345',
+@@ -108,7 +108,7 @@ describe('Visits Module Tests (E2E)', () => {
+     const adminResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testadmin@test.com',
++        email: 'testadmin.visits@test.com',
+         password: 'admin123',
+       });
+     adminAccessToken = adminResponse.body.accessToken;
+@@ -116,7 +116,7 @@ describe('Visits Module Tests (E2E)', () => {
+     const receptionistResponse = await request(app.getHttpServer())
+       .post('/api/auth/login')
+       .send({
+-        email: 'testreceptionist@test.com',
++        email: 'testreceptionist.visits@test.com',
+         password: 'receptionist123',
+       });
+     receptionistAccessToken = receptionistResponse.body.accessToken;
+@@ -210,7 +210,7 @@ describe('Visits Module Tests (E2E)', () => {
+       // Create and archive a patient
+       const patient = await prisma.patient.create({
+         data: {
+-          civilId: '98765432109',
++          civilId: '98765432199',
+           fullNameAr: 'مريم علي',
+           isArchived: true,
+           createdById: adminUserId,

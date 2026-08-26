@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git
+.github
+node_modules
+**/node_modules
+dist
+**/dist
+data/raw
+*.xlsx
+*.xls
+coverage
+logs
+tmp
+temp

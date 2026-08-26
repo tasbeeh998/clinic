@@ -1,0 +1,178 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { CreateServiceDto } from './dto/create-service.dto';
+import { UpdateServiceDto } from './dto/update-service.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
+
+@Injectable()
+export class ServicesService {
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
+
+  async create(createServiceDto: CreateServiceDto, userId: string, ipAddress?: string, userAgent?: string) {
+    // Trim service name
+    const name = createServiceDto.name.trim();
+
+    const service = await this.prisma.service.create({
+      data: {
+        name,
+        code: createServiceDto.code,
+        description: createServiceDto.description,
+        currentPrice: createServiceDto.currentPrice,
+        isActive: createServiceDto.isActive !== undefined ? createServiceDto.isActive : true,
+        createdById: userId,
+      },
+    });
+
+    await this.auditService.log(
+      userId,
+      'CREATE',
+      'Service',
+      service.id,
+      null,
+      {
+        name: service.name,
+        currentPrice: service.currentPrice,
+        isActive: service.isActive,
+      },
+      ipAddress,
+      userAgent,
+    );
+
+    return service;
+  }
+
+  async findAll(search?: string, isActive?: boolean, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+
+    const where: {
+      name?: { contains: string; mode: 'insensitive' };
+      isActive?: boolean;
+    } = {};
+
+    if (search) {
+      where.name = { contains: search.trim(), mode: 'insensitive' };
+    }
+
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.service.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      this.prisma.service.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findOne(id: string) {
+    const service = await this.prisma.service.findUnique({
+      where: { id },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    return service;
+  }
+
+  async update(id: string, updateServiceDto: UpdateServiceDto, userId: string, ipAddress?: string, userAgent?: string) {
+    const service = await this.findOne(id);
+
+    const updated = await this.prisma.service.update({
+      where: { id },
+      data: {
+        name: updateServiceDto.name !== undefined ? updateServiceDto.name.trim() : undefined,
+        code: updateServiceDto.code,
+        description: updateServiceDto.description,
+        currentPrice: updateServiceDto.currentPrice,
+        isActive: updateServiceDto.isActive,
+      },
+    });
+
+    await this.auditService.log(
+      userId,
+      'UPDATE',
+      'Service',
+      id,
+      {
+        name: service.name,
+        currentPrice: service.currentPrice,
+        isActive: service.isActive,
+      },
+      {
+        name: updated.name,
+        currentPrice: updated.currentPrice,
+        isActive: updated.isActive,
+      },
+      ipAddress,
+      userAgent,
+    );
+
+    return updated;
+  }
+
+  async updateStatus(id: string, updateStatusDto: UpdateStatusDto, userId: string, ipAddress?: string, userAgent?: string) {
+    const service = await this.findOne(id);
+
+    const updated = await this.prisma.service.update({
+      where: { id },
+      data: {
+        isActive: updateStatusDto.isActive,
+      },
+    });
+
+    const action = updateStatusDto.isActive ? 'ACTIVATE' : 'DEACTIVATE';
+
+    await this.auditService.log(
+      userId,
+      action,
+      'Service',
+      id,
+      {
+        isActive: service.isActive,
+      },
+      {
+        isActive: updated.isActive,
+      },
+      ipAddress,
+      userAgent,
+    );
+
+    return updated;
+  }
+}

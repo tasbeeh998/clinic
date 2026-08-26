@@ -1,0 +1,794 @@
+diff --git a/apps/api/src/app.module.ts b/apps/api/src/app.module.ts
+index 1f92032..595304d 100644
+--- a/apps/api/src/app.module.ts
++++ b/apps/api/src/app.module.ts
+@@ -9,6 +9,7 @@ import { PatientsModule } from './patients/patients.module';
+ import { AppointmentsModule } from './appointments/appointments.module';
+ import { VisitsModule } from './visits/visits.module';
+ import { ServicesModule } from './services/services.module';
++import { InvoicesModule } from './invoices/invoices.module';
+ 
+ @Module({
+   imports: [
+@@ -45,6 +46,7 @@ import { ServicesModule } from './services/services.module';
+     AppointmentsModule,
+     VisitsModule,
+     ServicesModule,
++    InvoicesModule,
+   ],
+ })
+ export class AppModule {}
+diff --git a/apps/api/src/invoices/dto/create-invoice-item.dto.ts b/apps/api/src/invoices/dto/create-invoice-item.dto.ts
+new file mode 100644
+index 0000000..b6c9cd0
+--- /dev/null
++++ b/apps/api/src/invoices/dto/create-invoice-item.dto.ts
+@@ -0,0 +1,13 @@
++import { IsUUID, IsInt, IsOptional, Min } from 'class-validator';
++import { Type } from 'class-transformer';
++
++export class CreateInvoiceItemDto {
++  @IsUUID()
++  serviceId: string;
++
++  @Type(() => Number)
++  @IsInt()
++  @IsOptional()
++  @Min(1)
++  quantity?: number = 1;
++}
+diff --git a/apps/api/src/invoices/dto/create-invoice.dto.ts b/apps/api/src/invoices/dto/create-invoice.dto.ts
+new file mode 100644
+index 0000000..f2a2ce6
+--- /dev/null
++++ b/apps/api/src/invoices/dto/create-invoice.dto.ts
+@@ -0,0 +1,14 @@
++import { IsUUID, IsArray, ArrayMinSize, ValidateNested } from 'class-validator';
++import { Type } from 'class-transformer';
++import { CreateInvoiceItemDto } from './create-invoice-item.dto';
++
++export class CreateInvoiceDto {
++  @IsUUID()
++  visitId: string;
++
++  @IsArray()
++  @ArrayMinSize(1)
++  @ValidateNested({ each: true })
++  @Type(() => CreateInvoiceItemDto)
++  items: CreateInvoiceItemDto[];
++}
+diff --git a/apps/api/src/invoices/dto/update-invoice-status.dto.ts b/apps/api/src/invoices/dto/update-invoice-status.dto.ts
+new file mode 100644
+index 0000000..22bcfcc
+--- /dev/null
++++ b/apps/api/src/invoices/dto/update-invoice-status.dto.ts
+@@ -0,0 +1,8 @@
++import { IsEnum, IsNotEmpty } from 'class-validator';
++import { InvoiceStatus } from '@prisma/client';
++
++export class UpdateInvoiceStatusDto {
++  @IsEnum(InvoiceStatus)
++  @IsNotEmpty()
++  status: InvoiceStatus;
++}
+diff --git a/apps/api/src/invoices/invoices.controller.ts b/apps/api/src/invoices/invoices.controller.ts
+new file mode 100644
+index 0000000..c790795
+--- /dev/null
++++ b/apps/api/src/invoices/invoices.controller.ts
+@@ -0,0 +1,56 @@
++import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, ParseUUIDPipe, Request } from '@nestjs/common';
++import { InvoicesService } from './invoices.service';
++import { CreateInvoiceDto } from './dto/create-invoice.dto';
++import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
++import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
++import { RolesGuard } from '../auth/guards/roles.guard';
++import { Roles } from '../auth/decorators/roles.decorator';
++import { UserRole, InvoiceStatus } from '@prisma/client';
++
++@Controller('invoices')
++@UseGuards(JwtAuthGuard, RolesGuard)
++export class InvoicesController {
++  constructor(private readonly invoicesService: InvoicesService) {}
++
++  @Post()
++  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
++  create(@Request() req, @Body() createInvoiceDto: CreateInvoiceDto) {
++    const ipAddress = req.ip || req.connection.remoteAddress;
++    const userAgent = req.headers['user-agent'];
++    return this.invoicesService.create(createInvoiceDto, req.user.id, ipAddress, userAgent);
++  }
++
++  @Get()
++  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
++  findAll(
++    @Query('patientId') patientId?: string,
++    @Query('status') status?: string,
++    @Query('page') page?: string,
++    @Query('limit') limit?: string,
++  ) {
++    return this.invoicesService.findAll(
++      patientId,
++      status as InvoiceStatus,
++      page ? parseInt(page, 10) : 1,
++      limit ? parseInt(limit, 10) : 20,
++    );
++  }
++
++  @Get(':id')
++  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
++  findOne(@Param('id', ParseUUIDPipe) id: string) {
++    return this.invoicesService.findOne(id);
++  }
++
++  @Patch(':id/status')
++  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
++  updateStatus(
++    @Request() req,
++    @Param('id', ParseUUIDPipe) id: string,
++    @Body() updateStatusDto: UpdateInvoiceStatusDto,
++  ) {
++    const ipAddress = req.ip || req.connection.remoteAddress;
++    const userAgent = req.headers['user-agent'];
++    return this.invoicesService.updateStatus(id, updateStatusDto, req.user.id, ipAddress, userAgent);
++  }
++}
+diff --git a/apps/api/src/invoices/invoices.module.ts b/apps/api/src/invoices/invoices.module.ts
+new file mode 100644
+index 0000000..5dafd26
+--- /dev/null
++++ b/apps/api/src/invoices/invoices.module.ts
+@@ -0,0 +1,13 @@
++import { Module } from '@nestjs/common';
++import { InvoicesService } from './invoices.service';
++import { InvoicesController } from './invoices.controller';
++import { DatabaseModule } from '../database/database.module';
++import { AuditModule } from '../audit/audit.module';
++
++@Module({
++  imports: [DatabaseModule, AuditModule],
++  controllers: [InvoicesController],
++  providers: [InvoicesService],
++  exports: [InvoicesService],
++})
++export class InvoicesModule {}
+diff --git a/apps/api/src/invoices/invoices.service.ts b/apps/api/src/invoices/invoices.service.ts
+new file mode 100644
+index 0000000..7d1f7d4
+--- /dev/null
++++ b/apps/api/src/invoices/invoices.service.ts
+@@ -0,0 +1,235 @@
++import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
++import { PrismaService } from '../database/prisma.service';
++import { AuditService } from '../audit/audit.service';
++import { InvoiceStatus } from '@prisma/client';
++import { CreateInvoiceDto } from './dto/create-invoice.dto';
++import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
++
++const INVOICE_ITEM_INCLUDE = {
++  invoiceItems: true,
++  patient: {
++    select: {
++      id: true,
++      civilId: true,
++      fullNameAr: true,
++      phone: true,
++    },
++  },
++  visit: {
++    select: {
++      id: true,
++      type: true,
++      visitDate: true,
++    },
++  },
++  payments: true,
++};
++
++@Injectable()
++export class InvoicesService {
++  // Status transition rules: DRAFT -> ISSUED -> VOID (or DRAFT -> VOID directly)
++  private readonly VALID_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
++    DRAFT: ['ISSUED', 'VOID'],
++    ISSUED: ['VOID'],
++    VOID: [], // Terminal state
++  };
++
++  constructor(
++    private prisma: PrismaService,
++    private auditService: AuditService,
++  ) {}
++
++  private validateStatusTransition(currentStatus: InvoiceStatus, newStatus: InvoiceStatus): void {
++    if (currentStatus === newStatus) {
++      return;
++    }
++
++    const validTransitions = this.VALID_TRANSITIONS[currentStatus];
++    if (!validTransitions.includes(newStatus)) {
++      throw new BadRequestException(
++        `Cannot transition from ${currentStatus} to ${newStatus}. Valid transitions: ${validTransitions.join(', ') || 'none'}`,
++      );
++    }
++  }
++
++  private async generateInvoiceNumber(): Promise<string> {
++    const count = await this.prisma.invoice.count();
++    return `INV-${String(count + 1).padStart(6, '0')}`;
++  }
++
++  async create(createInvoiceDto: CreateInvoiceDto, userId: string, ipAddress?: string, userAgent?: string) {
++    // Validate visit exists
++    const visit = await this.prisma.visit.findUnique({
++      where: { id: createInvoiceDto.visitId },
++    });
++
++    if (!visit) {
++      throw new NotFoundException('Visit not found');
++    }
++
++    // A visit can have at most one invoice (schema enforces this too)
++    const existingInvoice = await this.prisma.invoice.findUnique({
++      where: { visitId: createInvoiceDto.visitId },
++    });
++
++    if (existingInvoice) {
++      throw new ConflictException('This visit already has an invoice');
++    }
++
++    // Validate and price every requested service, snapshotting name + price
++    const serviceIds = createInvoiceDto.items.map((item) => item.serviceId);
++    const services = await this.prisma.service.findMany({
++      where: { id: { in: serviceIds } },
++    });
++
++    const serviceMap = new Map(services.map((s) => [s.id, s]));
++    const invoiceItemsData = createInvoiceDto.items.map((item) => {
++      const service = serviceMap.get(item.serviceId);
++
++      if (!service) {
++        throw new NotFoundException(`Service ${item.serviceId} not found`);
++      }
++
++      if (!service.isActive) {
++        throw new BadRequestException(`Service "${service.name}" is not active and cannot be invoiced`);
++      }
++
++      const quantity = item.quantity ?? 1;
++      const unitPrice = Number(service.currentPrice);
++      const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
++
++      return {
++        serviceId: service.id,
++        serviceNameSnapshot: service.name,
++        unitPriceSnapshot: unitPrice,
++        quantity,
++        lineTotal,
++      };
++    });
++
++    const subtotal = Math.round(invoiceItemsData.reduce((sum, i) => sum + i.lineTotal, 0) * 100) / 100;
++    // No tax and no additional fees are supported currently, so total mirrors subtotal.
++    const total = subtotal;
++    const invoiceNumber = await this.generateInvoiceNumber();
++
++    const invoice = await this.prisma.invoice.create({
++      data: {
++        invoiceNumber,
++        visitId: visit.id,
++        patientId: visit.patientId,
++        status: 'DRAFT',
++        subtotal,
++        total,
++        paid: 0,
++        remaining: total,
++        paymentStatus: 'UNPAID',
++        createdById: userId,
++        invoiceItems: {
++          create: invoiceItemsData,
++        },
++      },
++      include: INVOICE_ITEM_INCLUDE,
++    });
++
++    await this.auditService.log(
++      userId,
++      'CREATE',
++      'Invoice',
++      invoice.id,
++      null,
++      {
++        invoiceNumber: invoice.invoiceNumber,
++        visitId: invoice.visitId,
++        patientId: invoice.patientId,
++        total: invoice.total,
++        status: invoice.status,
++      },
++      ipAddress,
++      userAgent,
++    );
++
++    return invoice;
++  }
++
++  async findAll(patientId?: string, status?: InvoiceStatus, page: number = 1, limit: number = 20) {
++    const skip = (page - 1) * limit;
++
++    const where: { patientId?: string; status?: InvoiceStatus } = {};
++
++    if (patientId) {
++      where.patientId = patientId;
++    }
++
++    if (status) {
++      where.status = status;
++    }
++
++    const [invoices, total] = await Promise.all([
++      this.prisma.invoice.findMany({
++        where,
++        skip,
++        take: limit,
++        orderBy: { createdAt: 'desc' },
++        include: INVOICE_ITEM_INCLUDE,
++      }),
++      this.prisma.invoice.count({ where }),
++    ]);
++
++    return {
++      data: invoices,
++      meta: {
++        total,
++        page,
++        limit,
++        totalPages: Math.ceil(total / limit),
++      },
++    };
++  }
++
++  async findOne(id: string) {
++    const invoice = await this.prisma.invoice.findUnique({
++      where: { id },
++      include: INVOICE_ITEM_INCLUDE,
++    });
++
++    if (!invoice) {
++      throw new NotFoundException('Invoice not found');
++    }
++
++    return invoice;
++  }
++
++  async updateStatus(id: string, updateStatusDto: UpdateInvoiceStatusDto, userId: string, ipAddress?: string, userAgent?: string) {
++    const invoice = await this.findOne(id);
++
++    this.validateStatusTransition(invoice.status, updateStatusDto.status);
++
++    const data: { status: InvoiceStatus; issuedAt?: Date; issuedById?: string } = {
++      status: updateStatusDto.status,
++    };
++
++    if (updateStatusDto.status === 'ISSUED') {
++      data.issuedAt = new Date();
++      data.issuedById = userId;
++    }
++
++    const updated = await this.prisma.invoice.update({
++      where: { id },
++      data,
++      include: INVOICE_ITEM_INCLUDE,
++    });
++
++    await this.auditService.log(
++      userId,
++      'STATUS_CHANGE',
++      'Invoice',
++      id,
++      { status: invoice.status },
++      { status: updated.status },
++      ipAddress,
++      userAgent,
++    );
++
++    return updated;
++  }
++}
+diff --git a/apps/api/src/invoices/invoices.spec.ts b/apps/api/src/invoices/invoices.spec.ts
+new file mode 100644
+index 0000000..952dbe4
+--- /dev/null
++++ b/apps/api/src/invoices/invoices.spec.ts
+@@ -0,0 +1,393 @@
++import { Test, TestingModule } from '@nestjs/testing';
++import { INestApplication, ValidationPipe } from '@nestjs/common';
++import request from 'supertest';
++import { AppModule } from '../app.module';
++import { PrismaService } from '../database/prisma.service';
++import * as argon2 from 'argon2';
++import cookieParser from 'cookie-parser';
++
++describe('Invoices Module Tests (E2E)', () => {
++  let app: INestApplication;
++  let prisma: PrismaService;
++  let adminUserId: string;
++  let testPatientId: string;
++  let testServiceAId: string;
++  let testServiceBId: string;
++  let inactiveServiceId: string;
++  let testVisitId: string;
++  let secondVisitId: string;
++  let testInvoiceId: string;
++  let adminAccessToken: string;
++  let receptionistAccessToken: string;
++
++  beforeAll(async () => {
++    const moduleFixture: TestingModule = await Test.createTestingModule({
++      imports: [AppModule],
++    }).compile();
++
++    app = moduleFixture.createNestApplication();
++    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
++    app.setGlobalPrefix('api');
++    app.use(cookieParser());
++    await app.init();
++
++    prisma = app.get<PrismaService>(PrismaService);
++
++    // Clean up test data - delete in correct order to respect foreign key constraints
++    const testUsers = await prisma.user.findMany({
++      where: { email: { contains: '@test.com' } },
++      select: { id: true },
++    });
++    const testUserIds = testUsers.map(u => u.id);
++
++    if (testUserIds.length > 0) {
++      await prisma.auditLog.deleteMany({
++        where: { userId: { in: testUserIds } },
++      });
++    }
++
++    await prisma.invoiceItem.deleteMany();
++    await prisma.invoice.deleteMany();
++    await prisma.visit.deleteMany();
++    await prisma.service.deleteMany();
++    await prisma.patient.deleteMany();
++    await prisma.user.deleteMany({
++      where: { email: { contains: '@test.com' } },
++    });
++
++    // Create admin user
++    const adminPasswordHash = await argon2.hash('admin123');
++    const admin = await prisma.user.create({
++      data: {
++        email: 'testadmin@test.com',
++        passwordHash: adminPasswordHash,
++        name: 'Test Admin',
++        role: 'ADMIN',
++        isActive: true,
++      },
++    });
++    adminUserId = admin.id;
++
++    // Create receptionist user
++    const receptionistPasswordHash = await argon2.hash('receptionist123');
++    await prisma.user.create({
++      data: {
++        email: 'testreceptionist@test.com',
++        passwordHash: receptionistPasswordHash,
++        name: 'Test Receptionist',
++        role: 'RECEPTIONIST',
++        isActive: true,
++      },
++    });
++
++    // Create test patient
++    const patient = await prisma.patient.create({
++      data: {
++        civilId: '12345678901',
++        fullNameAr: 'سارة أحمد',
++        fullNameEn: 'Sara Ahmed',
++        phone: '99912345',
++        createdById: adminUserId,
++      },
++    });
++    testPatientId = patient.id;
++
++    // Create services (mirrors the clinic's real catalog example)
++    const serviceA = await prisma.service.create({
++      data: { name: 'Follow-up', currentPrice: 30, isActive: true, createdById: adminUserId },
++    });
++    testServiceAId = serviceA.id;
++
++    const serviceB = await prisma.service.create({
++      data: { name: 'Sonar 4D', currentPrice: 40, isActive: true, createdById: adminUserId },
++    });
++    testServiceBId = serviceB.id;
++
++    const inactiveService = await prisma.service.create({
++      data: { name: 'Discontinued Service', currentPrice: 15, isActive: false, createdById: adminUserId },
++    });
++    inactiveServiceId = inactiveService.id;
++
++    // Create visits to invoice against
++    const visit = await prisma.visit.create({
++      data: { patientId: testPatientId, type: 'CHECKUP', createdById: adminUserId },
++    });
++    testVisitId = visit.id;
++
++    const secondVisit = await prisma.visit.create({
++      data: { patientId: testPatientId, type: 'FOLLOW_UP', createdById: adminUserId },
++    });
++    secondVisitId = secondVisit.id;
++
++    // Get tokens once for all tests
++    const adminResponse = await request(app.getHttpServer())
++      .post('/api/auth/login')
++      .send({ email: 'testadmin@test.com', password: 'admin123' });
++    adminAccessToken = adminResponse.body.accessToken;
++
++    const receptionistResponse = await request(app.getHttpServer())
++      .post('/api/auth/login')
++      .send({ email: 'testreceptionist@test.com', password: 'receptionist123' });
++    receptionistAccessToken = receptionistResponse.body.accessToken;
++  });
++
++  afterAll(async () => {
++    const testUsers = await prisma.user.findMany({
++      where: { email: { contains: '@test.com' } },
++      select: { id: true },
++    });
++    const testUserIds = testUsers.map(u => u.id);
++
++    if (testUserIds.length > 0) {
++      await prisma.auditLog.deleteMany({
++        where: { userId: { in: testUserIds } },
++      });
++    }
++
++    await prisma.invoiceItem.deleteMany();
++    await prisma.invoice.deleteMany();
++    await prisma.visit.deleteMany();
++    await prisma.service.deleteMany();
++    await prisma.patient.deleteMany();
++    await prisma.user.deleteMany({
++      where: { email: { contains: '@test.com' } },
++    });
++    await app.close();
++  });
++
++  describe('Invoice Creation', () => {
++    it('should create an invoice as admin with multiple items and correct totals', async () => {
++      const response = await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({
++          visitId: testVisitId,
++          items: [
++            { serviceId: testServiceAId, quantity: 1 },
++            { serviceId: testServiceBId, quantity: 1 },
++          ],
++        })
++        .expect(201);
++
++      expect(response.body.status).toBe('DRAFT');
++      expect(Number(response.body.subtotal)).toBe(70);
++      expect(Number(response.body.total)).toBe(70);
++      expect(Number(response.body.remaining)).toBe(70);
++      expect(response.body.paymentStatus).toBe('UNPAID');
++      expect(response.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
++      expect(response.body.invoiceItems).toHaveLength(2);
++      testInvoiceId = response.body.id;
++    });
++
++    it('should snapshot the service name and price on the invoice item', async () => {
++      const response = await request(app.getHttpServer())
++        .get(`/api/invoices/${testInvoiceId}`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(200);
++
++      const item = response.body.invoiceItems.find((i: { serviceId: string }) => i.serviceId === testServiceAId);
++      expect(item.serviceNameSnapshot).toBe('Follow-up');
++      expect(Number(item.unitPriceSnapshot)).toBe(30);
++    });
++
++    it('should create an invoice as receptionist', async () => {
++      const response = await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${receptionistAccessToken}`)
++        .send({
++          visitId: secondVisitId,
++          items: [{ serviceId: testServiceAId, quantity: 2 }],
++        })
++        .expect(201);
++
++      expect(Number(response.body.total)).toBe(60);
++    });
++
++    it('should reject a second invoice for the same visit', async () => {
++      await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({
++          visitId: testVisitId,
++          items: [{ serviceId: testServiceAId, quantity: 1 }],
++        })
++        .expect(409);
++    });
++
++    it('should reject an invoice for a non-existent visit', async () => {
++      await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({
++          visitId: '00000000-0000-0000-0000-000000000000',
++          items: [{ serviceId: testServiceAId, quantity: 1 }],
++        })
++        .expect(404);
++    });
++
++    it('should reject an invoice referencing an inactive service', async () => {
++      const visit = await prisma.visit.create({
++        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
++      });
++
++      await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({
++          visitId: visit.id,
++          items: [{ serviceId: inactiveServiceId, quantity: 1 }],
++        })
++        .expect(400);
++    });
++
++    it('should reject an invoice with no items', async () => {
++      const visit = await prisma.visit.create({
++        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
++      });
++
++      await request(app.getHttpServer())
++        .post('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({ visitId: visit.id, items: [] })
++        .expect(400);
++    });
++
++    it('should reject unauthenticated invoice creation', async () => {
++      await request(app.getHttpServer())
++        .post('/api/invoices')
++        .send({ visitId: testVisitId, items: [{ serviceId: testServiceAId, quantity: 1 }] })
++        .expect(401);
++    });
++  });
++
++  describe('Invoice Retrieval', () => {
++    it('should get invoice by ID as admin', async () => {
++      const response = await request(app.getHttpServer())
++        .get(`/api/invoices/${testInvoiceId}`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(200);
++
++      expect(response.body.id).toBe(testInvoiceId);
++    });
++
++    it('should get invoice by ID as receptionist', async () => {
++      await request(app.getHttpServer())
++        .get(`/api/invoices/${testInvoiceId}`)
++        .set('Authorization', `Bearer ${receptionistAccessToken}`)
++        .expect(200);
++    });
++
++    it('should return 404 for non-existent invoice', async () => {
++      await request(app.getHttpServer())
++        .get('/api/invoices/00000000-0000-0000-0000-000000000000')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(404);
++    });
++
++    it('should reject unauthenticated invoice retrieval', async () => {
++      await request(app.getHttpServer())
++        .get(`/api/invoices/${testInvoiceId}`)
++        .expect(401);
++    });
++  });
++
++  describe('Invoice List and Filters', () => {
++    it('should list invoices as admin', async () => {
++      const response = await request(app.getHttpServer())
++        .get('/api/invoices')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(200);
++
++      expect(response.body.data).toBeInstanceOf(Array);
++      expect(response.body.meta.total).toBeGreaterThanOrEqual(2);
++    });
++
++    it('should filter by patientId', async () => {
++      const response = await request(app.getHttpServer())
++        .get(`/api/invoices?patientId=${testPatientId}`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(200);
++
++      expect(response.body.data.every((inv: { patientId: string }) => inv.patientId === testPatientId)).toBe(true);
++    });
++
++    it('should filter by status', async () => {
++      const response = await request(app.getHttpServer())
++        .get('/api/invoices?status=DRAFT')
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .expect(200);
++
++      expect(response.body.data.every((inv: { status: string }) => inv.status === 'DRAFT')).toBe(true);
++    });
++
++    it('should reject unauthenticated invoice list', async () => {
++      await request(app.getHttpServer())
++        .get('/api/invoices')
++        .expect(401);
++    });
++  });
++
++  describe('Invoice Status Transitions', () => {
++    it('should issue a draft invoice', async () => {
++      const response = await request(app.getHttpServer())
++        .patch(`/api/invoices/${testInvoiceId}/status`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({ status: 'ISSUED' })
++        .expect(200);
++
++      expect(response.body.status).toBe('ISSUED');
++      expect(response.body.issuedAt).toBeDefined();
++    });
++
++    it('should reject transitioning an issued invoice back to draft', async () => {
++      await request(app.getHttpServer())
++        .patch(`/api/invoices/${testInvoiceId}/status`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({ status: 'DRAFT' })
++        .expect(400);
++    });
++
++    it('should void an issued invoice', async () => {
++      const response = await request(app.getHttpServer())
++        .patch(`/api/invoices/${testInvoiceId}/status`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({ status: 'VOID' })
++        .expect(200);
++
++      expect(response.body.status).toBe('VOID');
++    });
++
++    it('should reject any transition out of a voided invoice', async () => {
++      await request(app.getHttpServer())
++        .patch(`/api/invoices/${testInvoiceId}/status`)
++        .set('Authorization', `Bearer ${adminAccessToken}`)
++        .send({ status: 'ISSUED' })
++        .expect(400);
++    });
++
++    it('should reject unauthenticated status change', async () => {
++      await request(app.getHttpServer())
++        .patch(`/api/invoices/${testInvoiceId}/status`)
++        .send({ status: 'VOID' })
++        .expect(401);
++    });
++  });
++
++  describe('Audit Logging', () => {
++    it('should log invoice creation', async () => {
++      const logs = await prisma.auditLog.findMany({
++        where: { entityType: 'Invoice', action: 'CREATE' },
++      });
++
++      expect(logs.length).toBeGreaterThan(0);
++    });
++
++    it('should log invoice status changes', async () => {
++      const logs = await prisma.auditLog.findMany({
++        where: { entityType: 'Invoice', action: 'STATUS_CHANGE' },
++      });
++
++      expect(logs.length).toBeGreaterThan(0);
++    });
++  });
++});
