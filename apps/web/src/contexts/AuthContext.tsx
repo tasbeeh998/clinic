@@ -28,14 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check for existing session on mount
-    const storedUser = sessionStorage.getItem('user');
-    const storedToken = sessionStorage.getItem('accessToken');
-    
+    const storedUser = localStorage.getItem('user');
+    const storedToken = localStorage.getItem('accessToken');
+
     if (storedUser && storedToken) {
       setUser(JSON.parse(storedUser));
       setAccessToken(storedToken);
     }
-    
+
     setIsLoading(false);
   }, []);
 
@@ -56,8 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Store access token and user in session storage (access token in memory is fine)
-    sessionStorage.setItem('accessToken', data.accessToken);
-    sessionStorage.setItem('user', JSON.stringify(data.user));
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('user', JSON.stringify(data.user));
 
     setUser(data.user);
     setAccessToken(data.accessToken);
@@ -73,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Ignore logout errors
     } finally {
       // Clear storage
-      sessionStorage.removeItem('accessToken');
-      sessionStorage.removeItem('user');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
 
       setUser(null);
       setAccessToken(null);
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to refresh token');
       }
 
-      sessionStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('accessToken', data.accessToken);
       setAccessToken(data.accessToken);
     } catch (error) {
       logout();
@@ -122,3 +122,4 @@ export function useAuth() {
   }
   return context;
 }
+

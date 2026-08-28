@@ -12,6 +12,7 @@ RUN npm install
 
 COPY src ./src
 COPY prisma ./prisma
+RUN ls -la /app/prisma/migrations/
 
 RUN npm run prisma:generate
 RUN npm run build

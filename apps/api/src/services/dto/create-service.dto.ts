@@ -8,6 +8,11 @@ export class CreateServiceDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(50)
+  code?: string;
+
+  @IsString()
+  @IsOptional()
   @MaxLength(1000)
   description?: string;
 
