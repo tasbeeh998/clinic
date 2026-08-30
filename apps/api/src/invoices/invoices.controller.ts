@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, ParseUUIDPipe, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, ParseUUIDPipe, Request, HttpCode } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
+import { AddChargeDto } from './dto/add-charge.dto';
+import { CreateReplacementDto } from './dto/create-replacement.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -51,6 +53,31 @@ export class InvoicesController {
   ) {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    return this.invoicesService.updateStatus(id, updateStatusDto, req.user.id, ipAddress, userAgent);
+    return this.invoicesService.updateStatus(id, updateStatusDto, req.user.id, req.user.role, ipAddress, userAgent);
+  }
+
+  @Post(':id/charges')
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
+  @HttpCode(201)
+  addCharge(
+    @Request() req,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() addChargeDto: AddChargeDto,
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.invoicesService.addCharge(id, addChargeDto, req.user.id, req.user.role, ipAddress, userAgent);
+  }
+
+  @Post(':id/replacement')
+  @Roles(UserRole.ADMIN)
+  createReplacement(
+    @Request() req,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() createReplacementDto: CreateReplacementDto,
+  ) {
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    return this.invoicesService.createReplacement(id, createReplacementDto, req.user.id, req.user.role, ipAddress, userAgent);
   }
 }

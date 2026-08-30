@@ -28,7 +28,7 @@ const VISIT_INCLUDE = {
       name: true,
     },
   },
-  invoice: {
+  invoices: {
     select: {
       id: true,
       invoiceNumber: true,

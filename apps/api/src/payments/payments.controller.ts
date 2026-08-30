@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, ParseUUIDPipe, Request, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, ParseUUIDPipe, Request, BadRequestException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -34,11 +35,11 @@ export class PaymentsController {
     return this.paymentsService.findOne(id);
   }
 
-  @Delete(':id')
+  @Post(':id/reverse')
   @Roles(UserRole.ADMIN)
-  remove(@Request() req, @Param('id', ParseUUIDPipe) id: string) {
+  reverse(@Request() req, @Param('id', ParseUUIDPipe) id: string, @Body() reversePaymentDto: ReversePaymentDto) {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
-    return this.paymentsService.remove(id, req.user.id, req.user.role, ipAddress, userAgent);
+    return this.paymentsService.reverse(id, reversePaymentDto, req.user.id, req.user.role, ipAddress, userAgent);
   }
 }

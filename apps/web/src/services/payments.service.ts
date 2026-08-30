@@ -25,11 +25,24 @@ export interface CreatePaymentDto {
 
 class PaymentsService {
   private getAuthHeaders() {
+    // Note: The auth context now manages accessToken in memory
+    // This service method is kept for compatibility but should be updated
+    // to get the token from the auth context instead of localStorage
     const token = localStorage.getItem('accessToken');
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
     };
+  }
+
+  setAccessToken(token: string) {
+    // Method to set token from auth context
+    // This is a temporary fix - service should get token from context
+    localStorage.setItem('accessToken', token);
+  }
+
+  clearAccessToken() {
+    localStorage.removeItem('accessToken');
   }
 
   async getPaymentsForInvoice(invoiceId: string): Promise<Payment[]> {
@@ -60,6 +73,7 @@ class PaymentsService {
   }
 
   async deletePayment(id: string): Promise<void> {
+    // This method is deprecated - use reversePayment instead
     const response = await fetch(`${apiBaseUrl}/payments/${id}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
@@ -69,6 +83,21 @@ class PaymentsService {
       const error = await response.json();
       throw new Error(error.message || 'Failed to remove payment');
     }
+  }
+
+  async reversePayment(id: string, reversalNotes?: string): Promise<{ id: string; reversed: boolean }> {
+    const response = await fetch(`${apiBaseUrl}/payments/${id}/reverse`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ reversalNotes }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to reverse payment');
+    }
+
+    return response.json();
   }
 }
 

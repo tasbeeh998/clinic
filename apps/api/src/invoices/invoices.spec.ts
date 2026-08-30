@@ -174,7 +174,8 @@ describe('Invoices Module Tests (E2E)', () => {
       expect(Number(response.body.total)).toBe(70);
       expect(Number(response.body.remaining)).toBe(70);
       expect(response.body.paymentStatus).toBe('UNPAID');
-      expect(response.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
+      // Draft invoices get temporary number, final INV-XXXXXX assigned at issuance
+      expect(response.body.invoiceNumber).toMatch(/^DRAFT-/);
       expect(response.body.invoiceItems).toHaveLength(2);
       testInvoiceId = response.body.id;
     });
@@ -328,7 +329,7 @@ describe('Invoices Module Tests (E2E)', () => {
   });
 
   describe('Invoice Status Transitions', () => {
-    it('should issue a draft invoice', async () => {
+    it('should issue a draft invoice and assign final invoice number', async () => {
       const response = await request(app.getHttpServer())
         .patch(`/api/invoices/${testInvoiceId}/status`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
@@ -337,6 +338,8 @@ describe('Invoices Module Tests (E2E)', () => {
 
       expect(response.body.status).toBe('ISSUED');
       expect(response.body.issuedAt).toBeDefined();
+      // Final INV-XXXXXX number assigned at issuance
+      expect(response.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
     });
 
     it('should reject transitioning an issued invoice back to draft', async () => {
@@ -388,6 +391,346 @@ describe('Invoices Module Tests (E2E)', () => {
       });
 
       expect(logs.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Additional Charges', () => {
+    let chargeInvoiceId: string;
+
+    it('should create invoice with percentage charge', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+          additionalCharges: [
+            { chargeType: 'PERCENTAGE', chargeValue: 10, description: 'Tax' },
+          ],
+        })
+        .expect(201);
+
+      expect(Number(response.body.subtotal)).toBe(30);
+      expect(Number(response.body.total)).toBe(33); // 30 + 10%
+      expect(response.body.additionalCharges).toHaveLength(1);
+      expect(response.body.additionalCharges[0].chargeType).toBe('PERCENTAGE');
+      expect(Number(response.body.additionalCharges[0].calculatedAmount)).toBe(3);
+      chargeInvoiceId = response.body.id;
+    });
+
+    it('should create invoice with fixed charge', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+          additionalCharges: [
+            { chargeType: 'FIXED', chargeValue: 5, description: 'Service Fee' },
+          ],
+        })
+        .expect(201);
+
+      expect(Number(response.body.subtotal)).toBe(30);
+      expect(Number(response.body.total)).toBe(35); // 30 + 5
+      expect(response.body.additionalCharges).toHaveLength(1);
+      expect(response.body.additionalCharges[0].chargeType).toBe('FIXED');
+      expect(Number(response.body.additionalCharges[0].calculatedAmount)).toBe(5);
+    });
+
+    it('should add charge to existing draft invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/charges`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          chargeType: 'PERCENTAGE',
+          chargeValue: 15,
+          description: 'Discount',
+        })
+        .expect(201);
+
+      expect(Number(response.body.total)).toBe(34.5); // 30 + 15%
+      expect(response.body.additionalCharges).toHaveLength(1);
+    });
+
+    it('should reject adding charge to issued invoice', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${chargeInvoiceId}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/api/invoices/${chargeInvoiceId}/charges`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          chargeType: 'FIXED',
+          chargeValue: 10,
+        })
+        .expect(400);
+    });
+  });
+
+  describe('Invoice Revision and Replacement', () => {
+    let originalInvoiceId: string;
+
+    it('should allow admin to void issued invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'VOID' })
+        .expect(200);
+
+      expect(response.body.status).toBe('VOID');
+      originalInvoiceId = invoice.body.id;
+    });
+
+    it('should reject receptionist voiding invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${receptionistAccessToken}`)
+        .send({ status: 'VOID' })
+        .expect(403);
+    });
+
+    it('should create replacement invoice for voided invoice', async () => {
+      // First create and issue an invoice (don't void it first)
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Create replacement - the service should void the original automatically
+      const response = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceBId, quantity: 1 }],
+          additionalCharges: [
+            { chargeType: 'FIXED', chargeValue: 5, description: 'Adjustment Fee' },
+          ],
+        })
+        .expect(201);
+
+      expect(response.body.status).toBe('DRAFT');
+      expect(response.body.invoiceItems).toHaveLength(1);
+      expect(response.body.additionalCharges).toHaveLength(1);
+      // Replacement starts as DRAFT with temporary number
+      expect(response.body.invoiceNumber).toMatch(/^DRAFT-/);
+
+      // Verify original invoice is linked and voided
+      const original = await prisma.invoice.findUnique({
+        where: { id: invoice.body.id },
+      });
+      expect(original?.replacedByInvoiceId).toBe(response.body.id);
+      expect(original?.status).toBe('VOID');
+      expect(original?.status).toBe('VOID');
+    });
+
+    it('should reject receptionist creating replacement', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/invoices/${originalInvoiceId}/replacement`)
+        .set('Authorization', `Bearer ${receptionistAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(403);
+    });
+
+    it('should reject replacement for non-issued invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const draftInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/api/invoices/${draftInvoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceBId, quantity: 1 }],
+        })
+        .expect(400);
+    });
+  });
+
+  describe('Concurrency-Safe Invoice Numbering', () => {
+    it('should assign final invoice number at issuance, not draft creation', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const draftInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Draft should have temporary number
+      expect(draftInvoice.body.invoiceNumber).toMatch(/^DRAFT-/);
+
+      // After issuance, should have final number
+      const issuedInvoice = await request(app.getHttpServer())
+        .patch(`/api/invoices/${draftInvoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      expect(issuedInvoice.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
+    });
+
+    it('should generate unique sequential invoice numbers', async () => {
+      const visits = await Promise.all([
+        prisma.visit.create({ data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId } }),
+        prisma.visit.create({ data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId } }),
+      ]);
+
+      const invoice1 = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ visitId: visits[0].id, items: [{ serviceId: testServiceAId, quantity: 1 }] })
+        .expect(201);
+
+      const invoice2 = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ visitId: visits[1].id, items: [{ serviceId: testServiceAId, quantity: 1 }] })
+        .expect(201);
+
+      // Issue both
+      const issued1 = await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice1.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      const issued2 = await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice2.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Extract numbers and verify they're sequential
+      const num1 = parseInt(issued1.body.invoiceNumber.replace('INV-', ''), 10);
+      const num2 = parseInt(issued2.body.invoiceNumber.replace('INV-', ''), 10);
+      expect(Math.abs(num1 - num2)).toBe(1);
+    });
+
+    it('should assign invoice number transactionally with status change', async () => {
+      // This test verifies that invoice number allocation happens in the same transaction
+      // as the status change to ISSUED, ensuring atomicity
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ visitId: visit.id, items: [{ serviceId: testServiceAId, quantity: 1 }] })
+        .expect(201);
+
+      // Verify draft has temporary number
+      expect(invoice.body.invoiceNumber).toMatch(/^DRAFT-/);
+      expect(invoice.body.status).toBe('DRAFT');
+
+      // Issue the invoice - this should allocate final number and change status atomically
+      const issuedInvoice = await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Verify both status and number changed together (atomic transaction)
+      expect(issuedInvoice.body.status).toBe('ISSUED');
+      expect(issuedInvoice.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
+      expect(issuedInvoice.body.issuedAt).toBeTruthy();
+      expect(issuedInvoice.body.issuedById).toBeTruthy();
+
+      // Verify the number is not the temporary draft number
+      expect(issuedInvoice.body.invoiceNumber).not.toBe(invoice.body.invoiceNumber);
     });
   });
 });

@@ -323,37 +323,121 @@ describe('Payments Module Tests (E2E)', () => {
     });
   });
 
-  describe('Payment Removal (Admin only)', () => {
-    let paymentToRemoveId: string;
+  describe('Payment Reversal (Admin only)', () => {
+    let paymentToReverseId: string;
 
     beforeAll(async () => {
       const payment = await prisma.payment.findFirst({ where: { invoiceId: issuedInvoiceId, amount: 10 } });
-      paymentToRemoveId = payment.id;
+      paymentToReverseId = payment.id;
     });
 
-    it('should reject removal by receptionist', async () => {
+    it('should reject reversal by receptionist', async () => {
       await request(app.getHttpServer())
-        .delete(`/api/payments/${paymentToRemoveId}`)
+        .post(`/api/payments/${paymentToReverseId}/reverse`)
         .set('Authorization', `Bearer ${receptionistAccessToken}`)
+        .send({})
         .expect(403);
     });
 
-    it('should remove a payment as admin and reverse the invoice totals', async () => {
-      await request(app.getHttpServer())
-        .delete(`/api/payments/${paymentToRemoveId}`)
+    it('should reverse a payment as admin and update invoice totals', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/payments/${paymentToReverseId}/reverse`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
-        .expect(200);
+        .send({ reversalNotes: 'Customer refund request' })
+        .expect(201);
+
+      expect(response.body.reversed).toBe(true);
 
       const invoice = await prisma.invoice.findUnique({ where: { id: issuedInvoiceId } });
       expect(Number(invoice.paid)).toBe(40);
       expect(Number(invoice.remaining)).toBe(10);
       expect(invoice.paymentStatus).toBe('PARTIALLY_PAID');
+
+      // Payment should be marked as REVERSED, not deleted
+      const reversedPayment = await prisma.payment.findUnique({ where: { id: paymentToReverseId } });
+      expect(reversedPayment.status).toBe('REVERSED');
+      expect(reversedPayment.reversedAt).toBeDefined();
+      expect(reversedPayment.reversedBy).toBe(adminUserId);
+      expect(reversedPayment.reversalNotes).toBe('Customer refund request');
     });
 
-    it('should reject unauthenticated removal', async () => {
+    it('should reject reversing the same payment twice', async () => {
       await request(app.getHttpServer())
-        .delete(`/api/payments/${paymentToRemoveId}`)
+        .post(`/api/payments/${paymentToReverseId}/reverse`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({})
+        .expect(400);
+    });
+
+    it('should not show reversed payments in invoice payment list', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/payments?invoiceId=${issuedInvoiceId}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      // Should only show non-reversed payments
+      expect(response.body.every((p: { status: string }) => p.status === 'RECORDED')).toBe(true);
+    });
+
+    it('should reject unauthenticated reversal', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/payments/${paymentToReverseId}/reverse`)
+        .send({})
         .expect(401);
+    });
+  });
+
+  describe('Concurrency Safety', () => {
+    let concurrentInvoiceId: string;
+
+    beforeAll(async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await prisma.invoice.create({
+        data: {
+          invoiceNumber: 'INV-CONCURRENT',
+          visitId: visit.id,
+          patientId: testPatientId,
+          status: 'ISSUED',
+          subtotal: 100,
+          total: 100,
+          paid: 0,
+          remaining: 100,
+          paymentStatus: 'UNPAID',
+          createdById: adminUserId,
+          issuedAt: new Date(),
+          issuedById: adminUserId,
+          invoiceItems: {
+            create: [{ serviceId: testServiceId, serviceNameSnapshot: 'Consultation', unitPriceSnapshot: 100, quantity: 1, lineTotal: 100 }],
+          },
+        },
+      });
+      concurrentInvoiceId = invoice.id;
+    });
+
+    it('should prevent overpayment through concurrent requests', async () => {
+      // Simulate two concurrent payment requests for the same amount
+      const [payment1, payment2] = await Promise.allSettled([
+        request(app.getHttpServer())
+          .post('/api/payments')
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({ invoiceId: concurrentInvoiceId, amount: 80, method: 'CASH' }),
+        request(app.getHttpServer())
+          .post('/api/payments')
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({ invoiceId: concurrentInvoiceId, amount: 80, method: 'CASH' }),
+      ]);
+
+      // At least one should succeed
+      const fulfilledPayments = [payment1, payment2].filter(p => p.status === 'fulfilled');
+      expect(fulfilledPayments.length).toBeGreaterThan(0);
+
+      // Verify final state is consistent - total should not exceed 100
+      const invoice = await prisma.invoice.findUnique({ where: { id: concurrentInvoiceId } });
+      expect(Number(invoice.paid)).toBeLessThanOrEqual(100);
+      expect(Number(invoice.remaining)).toBeGreaterThanOrEqual(0);
     });
   });
 
@@ -363,8 +447,8 @@ describe('Payments Module Tests (E2E)', () => {
       expect(logs.length).toBeGreaterThan(0);
     });
 
-    it('should log payment removal', async () => {
-      const logs = await prisma.auditLog.findMany({ where: { entityType: 'Payment', action: 'DELETE' } });
+    it('should log payment reversal', async () => {
+      const logs = await prisma.auditLog.findMany({ where: { entityType: 'Payment', action: 'REVERSE' } });
       expect(logs.length).toBeGreaterThan(0);
     });
   });

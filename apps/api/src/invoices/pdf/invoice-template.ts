@@ -13,6 +13,7 @@ export interface InvoicePdfData {
   paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
   issuedAt?: string | Date | null;
   createdAt: string | Date;
+  replacedByInvoiceId?: string | null;
   patient: {
     fullNameAr: string;
     civilId: string;
@@ -29,10 +30,17 @@ export interface InvoicePdfData {
     lineTotal: number | string;
     service?: { code: string | null } | null;
   }>;
+  additionalCharges?: Array<{
+    chargeType: 'PERCENTAGE' | 'FIXED';
+    chargeValue: number | string;
+    calculatedAmount: number | string;
+    description?: string | null;
+  }>;
   payments: Array<{
     amount: number | string;
     method: 'CASH' | 'VISA' | 'KNET' | 'OTHER';
     paymentDate: string | Date;
+    status?: 'RECORDED' | 'REVERSED';
   }>;
 }
 
@@ -105,12 +113,45 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     )
     .join('');
 
+  // Generate additional charges rows if they exist
+  const chargesRows = (invoice.additionalCharges || [])
+    .map(
+      (charge) => {
+        const chargeLabel = charge.description ? escapeHtml(charge.description) : (charge.chargeType === 'PERCENTAGE' ? 'Additional Charge' : 'Fixed Charge');
+        const priceDisplay = charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
+        return `
+        <tr class="charge-row">
+          <td class="col-service">${chargeLabel}</td>
+          <td class="col-code">&mdash;</td>
+          <td class="col-qty">1</td>
+          <td class="col-price">${priceDisplay}</td>
+          <td class="col-total">${formatMoney(charge.calculatedAmount)}</td>
+        </tr>`;
+      }
+    )
+    .join('');
+
+  // Generate additional charges totals rows
+  const chargesTotalsRows = (invoice.additionalCharges || [])
+    .map(
+      (charge) => {
+        const chargeLabel = charge.description || (charge.chargeType === 'PERCENTAGE' ? 'Additional Charge' : 'Fixed Charge');
+        const valueDisplay = charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
+        return `<div class="row"><span>${chargeLabel} (${valueDisplay})</span><span class="value">${formatMoney(charge.calculatedAmount)} KD</span></div>`;
+      }
+    )
+    .join('');
+
   const lastPayment = invoice.payments.length > 0 ? invoice.payments[invoice.payments.length - 1] : null;
 
   const voidWatermark =
     invoice.status === 'VOID'
       ? `<div class="watermark">VOID</div>`
       : '';
+
+  const replacementNote = invoice.replacedByInvoiceId
+    ? `<div class="replacement-note">This invoice has been replaced. See replacement invoice for current details.</div>`
+    : '';
 
   const visitTypeLabel = invoice.visit ? VISIT_TYPE_LABELS_EN[invoice.visit.type] : '&mdash;';
   const diagnosis = invoice.visit?.diagnosis ? escapeHtml(invoice.visit.diagnosis) : '&mdash;';
@@ -298,9 +339,21 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     border-bottom: 1px solid #E5E7EF;
   }
   table.items tr:nth-child(even) td { background: #F6F7FA; }
+  table.items tr.charge-row td { background: #FFF3E0; font-style: italic; }
   .col-qty, .col-price, .col-total, .col-code { text-align: center; }
   table.items th.col-qty, table.items th.col-price, table.items th.col-total, table.items th.col-code {
     text-align: center;
+  }
+  .replacement-note {
+    text-align: center;
+    font-size: 12px;
+    color: #C4362B;
+    font-weight: bold;
+    margin-bottom: 12px;
+    padding: 8px;
+    border: 1px solid #C4362B;
+    border-radius: 4px;
+    background: #FEF2F2;
   }
   .bottom-row {
     display: flex;
@@ -462,12 +515,17 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
       </thead>
       <tbody>
         ${itemsRows}
+        ${chargesRows}
       </tbody>
     </table>
+
+    ${replacementNote}
 
     <div class="bottom-row">
       <div class="totals-box">
         <div class="row"><span>Subtotal</span><span class="value">${formatMoney(invoice.subtotal)} KD</span></div>
+        ${chargesTotalsRows}
+        <div class="row" style="border-top: 1px solid #E5E7EF; padding-top: 8px; margin-top: 4px;"><span>Total</span><span class="value">${formatMoney(invoice.total)} KD</span></div>
         <div class="row"><span>Paid</span><span class="value">${formatMoney(invoice.paid)} KD</span></div>
         <div class="row remaining"><span>Remaining</span><span class="value">${formatMoney(invoice.remaining)} KD</span></div>
       </div>

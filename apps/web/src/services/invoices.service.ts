@@ -7,6 +7,17 @@ export interface InvoiceItem {
   unitPriceSnapshot: string;
   quantity: number;
   lineTotal: string;
+  service?: {
+    code: string | null;
+  };
+}
+
+export interface AdditionalCharge {
+  id: string;
+  chargeType: 'PERCENTAGE' | 'FIXED';
+  chargeValue: string;
+  calculatedAmount: string;
+  description: string | null;
 }
 
 export interface Invoice {
@@ -24,6 +35,8 @@ export interface Invoice {
   createdAt: string;
   updatedAt: string;
   invoiceItems: InvoiceItem[];
+  additionalCharges?: AdditionalCharge[];
+  replacedByInvoiceId?: string | null;
   patient: {
     id: string;
     civilId: string;
@@ -34,6 +47,7 @@ export interface Invoice {
     id: string;
     type: string;
     visitDate: string;
+    diagnosis?: string | null;
   };
 }
 
@@ -46,6 +60,26 @@ export interface CreateInvoiceItemDto {
 export interface CreateInvoiceDto {
   visitId: string;
   items: CreateInvoiceItemDto[];
+  additionalCharges?: {
+    chargeType: 'PERCENTAGE' | 'FIXED';
+    chargeValue: number;
+    description?: string;
+  }[];
+}
+
+export interface AddChargeDto {
+  chargeType: 'PERCENTAGE' | 'FIXED';
+  chargeValue: number;
+  description?: string;
+}
+
+export interface CreateReplacementDto {
+  items: CreateInvoiceItemDto[];
+  additionalCharges?: {
+    chargeType: 'PERCENTAGE' | 'FIXED';
+    chargeValue: number;
+    description?: string;
+  }[];
 }
 
 export interface InvoicesListResponse {
@@ -127,6 +161,36 @@ class InvoicesService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message || 'Failed to update invoice status');
+    }
+
+    return response.json();
+  }
+
+  async addCharge(invoiceId: string, chargeData: AddChargeDto): Promise<Invoice> {
+    const response = await fetch(`${apiBaseUrl}/invoices/${invoiceId}/charges`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(chargeData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to add charge');
+    }
+
+    return response.json();
+  }
+
+  async createReplacement(invoiceId: string, replacementData: CreateReplacementDto): Promise<Invoice> {
+    const response = await fetch(`${apiBaseUrl}/invoices/${invoiceId}/replacement`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(replacementData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to create replacement');
     }
 
     return response.json();
