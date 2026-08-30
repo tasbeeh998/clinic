@@ -43,6 +43,7 @@ describe('Reports Module Tests (E2E)', () => {
     }
 
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceAdditionalCharge.deleteMany();
     await prisma.invoiceItem.deleteMany();
@@ -138,6 +139,7 @@ describe('Reports Module Tests (E2E)', () => {
 
   afterAll(async () => {
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceAdditionalCharge.deleteMany();
     await prisma.invoiceItem.deleteMany();

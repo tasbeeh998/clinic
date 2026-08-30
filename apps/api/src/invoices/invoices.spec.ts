@@ -47,6 +47,7 @@ describe('Invoices Module Tests (E2E)', () => {
     }
 
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
@@ -147,6 +148,7 @@ describe('Invoices Module Tests (E2E)', () => {
     }
 
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
@@ -1033,6 +1035,32 @@ describe('Invoices Module Tests (E2E)', () => {
       expect(unchangedInvoice.body.invoiceNumber).toBe(originalInvoiceNumber);
       expect(unchangedInvoice.body.issuedAt).toBe(originalIssuedAt);
       expect(unchangedInvoice.body.issuedById).toBe(originalIssuedById);
+    });
+
+    it('serializes concurrent issuance of the same draft without overwriting issuance metadata', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+      const draft = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ visitId: visit.id, items: [{ serviceId: testServiceAId, quantity: 1 }] })
+        .expect(201);
+
+      const [first, second] = await Promise.all([
+        request(app.getHttpServer()).patch(`/api/invoices/${draft.body.id}/status`).set('Authorization', `Bearer ${adminAccessToken}`).send({ status: 'ISSUED' }),
+        request(app.getHttpServer()).patch(`/api/invoices/${draft.body.id}/status`).set('Authorization', `Bearer ${adminAccessToken}`).send({ status: 'ISSUED' }),
+      ]);
+      const succeeded = [first, second].filter((response) => response.status === 200);
+      const rejected = [first, second].filter((response) => response.status === 400);
+      expect(succeeded).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      const persisted = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.body.id } });
+      expect(persisted.status).toBe('ISSUED');
+      expect(persisted.invoiceNumber).toBe(succeeded[0].body.invoiceNumber);
+      expect(persisted.issuedAt?.toISOString()).toBe(new Date(succeeded[0].body.issuedAt).toISOString());
+      expect(persisted.issuedById).toBe(succeeded[0].body.issuedById);
     });
 
     it('should generate unique sequential invoice numbers', async () => {

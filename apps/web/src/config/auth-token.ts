@@ -1,0 +1,11 @@
+// Access tokens are deliberately process-memory only.  A reload restores a
+// session through the HttpOnly refresh cookie in AuthProvider.
+let accessToken: string | null = null;
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}

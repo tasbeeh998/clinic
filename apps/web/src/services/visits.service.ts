@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export type VisitStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
@@ -14,6 +15,11 @@ export interface Invoice {
   remaining: string;
   paymentStatus: PaymentStatus;
   invoiceItems: Array<{ serviceNameSnapshot: string }>;
+}
+
+export function currentInvoice(invoices?: Invoice[]): Invoice | undefined {
+  return invoices?.find((invoice) => invoice.status === 'ISSUED')
+    ?? invoices?.find((invoice) => invoice.status === 'DRAFT');
 }
 
 export interface Visit {
@@ -83,7 +89,7 @@ export interface TodayVisitCounts {
 
 class VisitsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),

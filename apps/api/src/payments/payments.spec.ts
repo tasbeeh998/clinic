@@ -42,6 +42,7 @@ describe('Payments Module Tests (E2E)', () => {
     }
 
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
@@ -184,6 +185,7 @@ describe('Payments Module Tests (E2E)', () => {
     }
 
     await prisma.refreshToken.deleteMany();
+    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();

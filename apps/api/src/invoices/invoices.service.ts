@@ -273,6 +273,8 @@ export class InvoicesService {
 
     // Use transaction for atomic status change and number assignment
     return this.prisma.$transaction(async (tx) => {
+      // The state check and sequence allocation must be serialized on this row.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id}::uuid FOR UPDATE`;
       const invoice = await tx.invoice.findUnique({
         where: { id },
         include: INVOICE_ITEM_INCLUDE,
@@ -423,7 +425,12 @@ export class InvoicesService {
 
     // Use transaction for the complete replacement workflow with atomic number generation
     return this.prisma.$transaction(async (tx) => {
-      // Lock the original invoice row to prevent concurrent replacements
+      // Serialize payment, reversal, and replacement against the original before
+      // reading any financial or replacement state.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${originalInvoiceId}::uuid FOR UPDATE`;
+
+      // This is the authoritative post-lock snapshot. Never use a pre-lock
+      // financial read to build a replacement.
       const originalInvoice = await tx.invoice.findUnique({
         where: { id: originalInvoiceId },
         include: {
@@ -436,22 +443,13 @@ export class InvoicesService {
         throw new NotFoundException('Original invoice not found');
       }
 
-      // Only issued invoices can be replaced
-      if (originalInvoice.status !== 'ISSUED') {
-        throw new BadRequestException('Only issued invoices can be replaced');
+      if (originalInvoice.replacedByInvoiceId) {
+        throw new ConflictException('This invoice already has a replacement');
       }
 
-      // Lock the invoice row for update to prevent concurrent replacement requests
-      await tx.$queryRaw`SELECT * FROM "Invoice" WHERE id = ${originalInvoiceId}::uuid FOR UPDATE`;
-
-      // Re-fetch invoice after lock to check if replacement already exists
-      const lockedInvoice = await tx.invoice.findUnique({
-        where: { id: originalInvoiceId },
-        select: { replacedByInvoiceId: true },
-      });
-
-      if (lockedInvoice?.replacedByInvoiceId) {
-        throw new ConflictException('This invoice already has a replacement');
+      // Only issued invoices can be replaced.
+      if (originalInvoice.status !== 'ISSUED') {
+        throw new BadRequestException('Only issued invoices can be replaced');
       }
 
       // Get the visit and patient information
@@ -523,13 +521,22 @@ export class InvoicesService {
       const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
       const total = subtotal.add(totalCharges).toDecimalPlaces(2);
       
-      // Financial model for paid invoice replacement:
-      // - Original payments remain on original invoice (preserves audit trail)
-      // - Replacement inherits the paid amount from original invoice
-      // - Replacement remaining balance = replacement.total - original.paid
-      // - This prevents debt duplication while maintaining auditability
-      const originalPaid = originalInvoice.paid || new Decimal(0);
-      const replacementPaid = originalPaid;
+      // Payments stay attached to their source invoice.  The replacement receives
+      // explicit, capped allocations from still-recorded source payments. This
+      // makes reversals observable and avoids a mutable copied `paid` value.
+      const sourcePayments = await tx.payment.findMany({
+        where: { invoiceId: originalInvoiceId, status: 'RECORDED' },
+        orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }],
+        select: { id: true, amount: true },
+      });
+      const originalPaid = sourcePayments.reduce((sum, payment) => sum.add(payment.amount), new Decimal(0)).toDecimalPlaces(2);
+      let allocatable = total;
+      const allocations = sourcePayments.flatMap((payment) => {
+        const amount = Decimal.min(payment.amount, allocatable).toDecimalPlaces(2);
+        allocatable = allocatable.sub(amount);
+        return amount.gt(0) ? [{ paymentId: payment.id, amount }] : [];
+      });
+      const replacementPaid = allocations.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0)).toDecimalPlaces(2);
       const replacementRemaining = total.sub(replacementPaid).toDecimalPlaces(2);
       
       // Determine payment status based on remaining balance
@@ -562,6 +569,9 @@ export class InvoicesService {
           additionalCharges: {
             create: additionalChargesData,
           },
+          paymentAllocations: {
+            create: allocations,
+          },
         },
         include: INVOICE_ITEM_INCLUDE,
       });
@@ -572,6 +582,9 @@ export class InvoicesService {
         data: {
           status: 'VOID',
           replacedByInvoiceId: replacementInvoice.id,
+          paid: originalPaid,
+          remaining: Decimal.max(originalInvoice.total.sub(originalPaid), new Decimal(0)).toDecimalPlaces(2),
+          paymentStatus: originalPaid.gte(originalInvoice.total) ? 'PAID' : originalPaid.gt(0) ? 'PARTIALLY_PAID' : 'UNPAID',
         },
       });
 

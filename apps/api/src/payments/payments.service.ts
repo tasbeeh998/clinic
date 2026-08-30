@@ -3,6 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ReversePaymentDto } from './dto/reverse-payment.dto';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 const PAYMENT_INCLUDE = {
@@ -22,6 +23,30 @@ export class PaymentsService {
     if (paid.lte(0)) return 'UNPAID';
     if (paid.gte(total)) return 'PAID';
     return 'PARTIALLY_PAID';
+  }
+
+  private async recordedDirectPayments(tx: Prisma.TransactionClient, invoiceId: string): Promise<Decimal> {
+    const result = await tx.payment.aggregate({
+      where: { invoiceId, status: 'RECORDED' },
+      _sum: { amount: true },
+    });
+    return new Decimal(result._sum.amount ?? 0).toDecimalPlaces(2);
+  }
+
+  private async refreshInvoiceBalance(tx: Prisma.TransactionClient, invoiceId: string) {
+    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId }, select: { total: true } });
+    if (!invoice) throw new NotFoundException('Related invoice not found');
+
+    const directPaid = await this.recordedDirectPayments(tx, invoiceId);
+    const allocationRows = await tx.paymentAllocation.findMany({
+      where: { invoiceId, payment: { status: 'RECORDED' } },
+      select: { amount: true },
+    });
+    const allocatedPaid = allocationRows.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0));
+    const paid = directPaid.add(allocatedPaid).toDecimalPlaces(2);
+    const remaining = Decimal.max(invoice.total.sub(paid), new Decimal(0)).toDecimalPlaces(2);
+    const paymentStatus = this.computePaymentStatus(paid, invoice.total);
+    return tx.invoice.update({ where: { id: invoiceId }, data: { paid, remaining, paymentStatus } });
   }
 
   async create(createPaymentDto: CreatePaymentDto, userId: string, ipAddress?: string, userAgent?: string) {
@@ -195,12 +220,17 @@ export class PaymentsService {
         throw new NotFoundException('Related invoice not found');
       }
 
-      const total = new Decimal(invoice[0].total);
-      const paymentAmount = new Decimal(payment[0].amount);
-      const paid = new Decimal(invoice[0].paid);
-      const newPaid = paid.sub(paymentAmount).toDecimalPlaces(2);
-      const newRemaining = total.sub(newPaid).toDecimalPlaces(2);
-      const newPaymentStatus = this.computePaymentStatus(newPaid, total);
+      const allocations = await tx.paymentAllocation.findMany({
+        where: { paymentId: id },
+        select: { invoiceId: true },
+      });
+
+      // Lock every affected replacement in stable order before changing the
+      // payment status. Their cached balance is derived from these allocations.
+      const affectedInvoiceIds = [...new Set(allocations.map((allocation) => allocation.invoiceId))].sort();
+      for (const affectedInvoiceId of affectedInvoiceIds) {
+        await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${affectedInvoiceId}::uuid FOR UPDATE`;
+      }
 
       // Mark payment as reversed instead of deleting
       await tx.payment.update({
@@ -213,15 +243,12 @@ export class PaymentsService {
         },
       });
 
-      // Recalculate invoice balances
-      await tx.invoice.update({
-        where: { id: invoice[0].id },
-        data: {
-          paid: newPaid,
-          remaining: newRemaining,
-          paymentStatus: newPaymentStatus,
-        },
-      });
+      // Recalculate source and all derived replacement balances from persisted
+      // recorded payments/allocations; no copied payment credit can survive.
+      await this.refreshInvoiceBalance(tx, invoice[0].id);
+      for (const affectedInvoiceId of affectedInvoiceIds) {
+        await this.refreshInvoiceBalance(tx, affectedInvoiceId);
+      }
 
       // Audit log within transaction
       await tx.auditLog.create({

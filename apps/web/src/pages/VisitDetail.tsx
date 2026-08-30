@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, User, Phone, IdCard, Calendar, Stethoscope, FileText, ReceiptText } from 'lucide-react';
-import { visitsService, VisitStatus, Invoice } from '../services/visits.service';
+import { visitsService, VisitStatus, currentInvoice } from '../services/visits.service';
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   SCHEDULED: 'قيد الانتظار',
@@ -55,6 +55,8 @@ export default function VisitDetail() {
       </div>
     );
   }
+
+  const activeInvoice = currentInvoice(visit.invoices);
 
   return (
     <div className="page-container">
@@ -133,19 +135,14 @@ export default function VisitDetail() {
           <Stethoscope size={17} strokeWidth={1.75} />
           الخدمات
         </h2>
-        {visit.invoices?.length ? (
+        {activeInvoice ? (
           <ul className="space-y-2">
-            {visit.invoices
-              .filter((inv: Invoice) => inv.status !== 'VOID')
-              .slice(0, 1) // Show active invoice only
-              .map((invoice: Invoice) => 
-                invoice.invoiceItems.map((item, i: number) => (
+            {activeInvoice.invoiceItems.map((item, i: number) => (
                   <li key={i} className="text-sm text-[#1F2430] flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#102F63]" />
                     {item.serviceNameSnapshot}
                   </li>
-                ))
-              )}
+                ))}
           </ul>
         ) : (
           <p className="text-sm text-[#94A3B8]">لا توجد خدمات مسجلة بعد لهذه الزيارة (لسه ما اتعملتش فاتورة).</p>
@@ -157,42 +154,37 @@ export default function VisitDetail() {
           <FileText size={17} strokeWidth={1.75} />
           الفاتورة
         </h2>
-        {visit.invoices?.length ? (
+        {activeInvoice ? (
           <>
-            {visit.invoices
-              .filter((inv: Invoice) => inv.status !== 'VOID')
-              .slice(0, 1) // Show active invoice only
-              .map((invoice: Invoice) => (
-                <div key={invoice.id}>
+                <div key={activeInvoice.id}>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
                     <div>
                       <div className="text-[#94A3B8] text-xs mb-1">رقم الفاتورة</div>
-                      <div className="font-medium text-[#1F2430]">{invoice.invoiceNumber}</div>
+                      <div className="font-medium text-[#1F2430]">{activeInvoice.invoiceNumber}</div>
                     </div>
                     <div>
                       <div className="text-[#94A3B8] text-xs mb-1">الإجمالي</div>
-                      <div className="font-medium text-[#1F2430]">{parseFloat(invoice.total).toFixed(2)} د.ك</div>
+                      <div className="font-medium text-[#1F2430]">{parseFloat(activeInvoice.total).toFixed(2)} د.ك</div>
                     </div>
                     <div>
                       <div className="text-[#94A3B8] text-xs mb-1">المدفوع</div>
-                      <div className="font-medium text-[#1F2430]">{parseFloat(invoice.paid).toFixed(2)} د.ك</div>
+                      <div className="font-medium text-[#1F2430]">{parseFloat(activeInvoice.paid).toFixed(2)} د.ك</div>
                     </div>
                     <div>
                       <div className="text-[#94A3B8] text-xs mb-1">المتبقي</div>
-                      <div className="font-medium text-[#C4362B]">{parseFloat(invoice.remaining).toFixed(2)} د.ك</div>
+                      <div className="font-medium text-[#C4362B]">{parseFloat(activeInvoice.remaining).toFixed(2)} د.ك</div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.08)', color: 'var(--brand-blue)' }}>
-                      {PAYMENT_STATUS_LABELS[invoice.paymentStatus]}
+                      {PAYMENT_STATUS_LABELS[activeInvoice.paymentStatus]}
                     </span>
-                    <button onClick={() => navigate(`/invoices/${invoice.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+                    <button onClick={() => navigate(`/invoices/${activeInvoice.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
                       <ReceiptText size={16} strokeWidth={1.75} />
                       عرض الفاتورة
                     </button>
                   </div>
                 </div>
-              ))}
           </>
         ) : (
           <div className="flex items-center justify-between">

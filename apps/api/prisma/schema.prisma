@@ -211,6 +211,7 @@ model Invoice {
   invoiceItems       InvoiceItem[]
   additionalCharges   InvoiceAdditionalCharge[]
   payments           Payment[]
+  paymentAllocations PaymentAllocation[]
   replacedByInvoice   Invoice?               @relation("InvoiceReplacement", fields: [replacedByInvoiceId], references: [id], onDelete: SetNull)
   replacementInvoices Invoice[]               @relation("InvoiceReplacement")
 
@@ -270,11 +271,30 @@ model Payment {
 
   // Relations
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
 
   @@index([invoiceId])
   @@index([paymentDate])
   @@index([method])
   @@index([status])
+}
+
+// A replacement never owns a historical payment.  This immutable allocation
+// records the amount of a source payment that credits the replacement, so a
+// later reversal can remove that credit without losing the payment history.
+model PaymentAllocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  paymentId String   @db.Uuid
+  invoiceId String   @db.Uuid
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@index([paymentId])
 }
 
 model RefreshToken {

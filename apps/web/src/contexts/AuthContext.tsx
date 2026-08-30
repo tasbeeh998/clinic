@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { setAccessToken as setInMemoryAccessToken } from '../config/auth-token';
 
 interface User {
   id: string;
@@ -40,9 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = await response.json();
           setUser(data.user);
           setAccessToken(data.accessToken);
-          // Temporarily store in localStorage for service compatibility
-          // This should be refactored to use context-based token management
-          localStorage.setItem('accessToken', data.accessToken);
+          setInMemoryAccessToken(data.accessToken);
         }
       } catch (error) {
         // Session recovery failed - user needs to login
@@ -71,12 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
-    // Store access token in memory only (no localStorage)
-    // Refresh token is stored as HttpOnly cookie by the server
     setUser(data.user);
     setAccessToken(data.accessToken);
-    // Temporarily store in localStorage for service compatibility
-    localStorage.setItem('accessToken', data.accessToken);
+    setInMemoryAccessToken(data.accessToken);
   };
 
   const logout = async () => {
@@ -88,10 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       // Ignore logout errors
     } finally {
-      // Clear memory state and localStorage
       setUser(null);
       setAccessToken(null);
-      localStorage.removeItem('accessToken');
+      setInMemoryAccessToken(null);
     }
   };
 
@@ -113,8 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         setUser(data.user);
       }
-      // Temporarily store in localStorage for service compatibility
-      localStorage.setItem('accessToken', data.accessToken);
+      setInMemoryAccessToken(data.accessToken);
     } catch (error) {
       logout();
       throw error;

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { invoicesService } from '../services/invoices.service';
+import { CreateReplacementDto, invoicesService } from '../services/invoices.service';
 import { paymentsService, PaymentMethod } from '../services/payments.service';
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -73,7 +73,7 @@ export default function InvoiceDetail() {
   });
 
   const replacementMutation = useMutation({
-    mutationFn: (replacementData: { items: any[]; additionalCharges?: any[] }) => 
+    mutationFn: (replacementData: CreateReplacementDto) =>
       invoicesService.createReplacement(id!, replacementData),
     onSuccess: (newInvoice) => {
       navigate(`/invoices/${newInvoice.id}`);
