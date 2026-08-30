@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Get, UseGuards, Request, HttpCode, HttpStatus, Res, Req } from '@nestjs/common';
 import { Response } from 'express';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerGuard, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -71,7 +71,10 @@ export class AuthController {
 
     res.cookie('refreshToken', result.refreshToken, cookieOptions);
 
-    return { accessToken: result.accessToken };
+    return { 
+      accessToken: result.accessToken,
+      user: result.user,
+    };
   }
 
   @Post('logout')
@@ -97,6 +100,7 @@ export class AuthController {
 
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
+  @SkipThrottle()
   @HttpCode(HttpStatus.OK)
   async changePassword(@Request() req, @Body() changePasswordDto: ChangePasswordDto) {
     const ipAddress = req.ip || req.connection.remoteAddress;

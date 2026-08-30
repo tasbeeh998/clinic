@@ -108,8 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to refresh token');
       }
 
-      // Update access token in memory only
+      // Update both access token and user data from server
       setAccessToken(data.accessToken);
+      if (data.user) {
+        setUser(data.user);
+      }
       // Temporarily store in localStorage for service compatibility
       localStorage.setItem('accessToken', data.accessToken);
     } catch (error) {

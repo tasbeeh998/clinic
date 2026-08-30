@@ -2,6 +2,20 @@ import { apiBaseUrl } from '../config/api';
 
 export type VisitStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'VOID';
+export type PaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  total: string;
+  paid: string;
+  remaining: string;
+  paymentStatus: PaymentStatus;
+  invoiceItems: Array<{ serviceNameSnapshot: string }>;
+}
+
 export interface Visit {
   id: string;
   patientId: string;
@@ -29,16 +43,7 @@ export interface Visit {
     id: string;
     name: string;
   };
-  invoice?: {
-    id: string;
-    invoiceNumber: string;
-    status: 'DRAFT' | 'ISSUED' | 'VOID';
-    total: string;
-    paid: string;
-    remaining: string;
-    paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
-    invoiceItems: Array<{ serviceNameSnapshot: string }>;
-  } | null;
+  invoices?: Invoice[];
 }
 
 export interface CreateVisitDto {

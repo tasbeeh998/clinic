@@ -31,16 +31,17 @@ describe('Payments Module Tests (E2E)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    const testUsers = await prisma.user.findMany({
+    const cleanupTestUsers = await prisma.user.findMany({
       where: { email: { contains: '@test.com' } },
       select: { id: true },
     });
-    const testUserIds = testUsers.map(u => u.id);
+    const cleanupTestUserIds = cleanupTestUsers.map(u => u.id);
 
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({ where: { userId: { in: testUserIds } } });
+    if (cleanupTestUserIds.length > 0) {
+      await prisma.auditLog.deleteMany({ where: { userId: { in: cleanupTestUserIds } } });
     }
 
+    await prisma.refreshToken.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
@@ -172,16 +173,17 @@ describe('Payments Module Tests (E2E)', () => {
   });
 
   afterAll(async () => {
-    const testUsers = await prisma.user.findMany({
+    const cleanupTestUsers = await prisma.user.findMany({
       where: { email: { contains: '@test.com' } },
       select: { id: true },
     });
-    const testUserIds = testUsers.map(u => u.id);
+    const cleanupTestUserIds = cleanupTestUsers.map(u => u.id);
 
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({ where: { userId: { in: testUserIds } } });
+    if (cleanupTestUserIds.length > 0) {
+      await prisma.auditLog.deleteMany({ where: { userId: { in: cleanupTestUserIds } } });
     }
 
+    await prisma.refreshToken.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();

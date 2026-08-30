@@ -46,6 +46,8 @@ describe('Invoices Module Tests (E2E)', () => {
       });
     }
 
+    await prisma.refreshToken.deleteMany();
+    await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
@@ -144,6 +146,8 @@ describe('Invoices Module Tests (E2E)', () => {
       });
     }
 
+    await prisma.refreshToken.deleteMany();
+    await prisma.payment.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
@@ -204,8 +208,8 @@ describe('Invoices Module Tests (E2E)', () => {
       expect(Number(response.body.total)).toBe(60);
     });
 
-    it('should reject a second invoice for the same visit', async () => {
-      await request(app.getHttpServer())
+    it('should reject a second active invoice for the same visit', async () => {
+      const response = await request(app.getHttpServer())
         .post('/api/invoices')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({
@@ -213,6 +217,84 @@ describe('Invoices Module Tests (E2E)', () => {
           items: [{ serviceId: testServiceAId, quantity: 1 }],
         })
         .expect(409);
+
+      expect(response.body.message).toBe('This visit already has an active invoice');
+    });
+
+    it('should allow invoice creation after original invoice is voided', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      // Create first invoice
+      const firstInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Void the first invoice
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${firstInvoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'VOID' })
+        .expect(200);
+
+      // Should be able to create a new invoice for the same visit
+      const secondInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      expect(secondInvoice.body.visitId).toBe(visit.id);
+    });
+
+    it('should prevent concurrent invoice creation for same visit', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      // Simulate two concurrent invoice creation requests
+      const [invoice1, invoice2] = await Promise.allSettled([
+        request(app.getHttpServer())
+          .post('/api/invoices')
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            visitId: visit.id,
+            items: [{ serviceId: testServiceAId, quantity: 1 }],
+          }),
+        request(app.getHttpServer())
+          .post('/api/invoices')
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            visitId: visit.id,
+            items: [{ serviceId: testServiceAId, quantity: 1 }],
+          }),
+      ]);
+
+      // Exactly one should succeed (201), one should fail (409)
+      const successfulInvoices = [invoice1, invoice2].filter(p => p.status === 'fulfilled' && p.value.status === 201);
+      const failedInvoices = [invoice1, invoice2].filter(p => p.status === 'fulfilled' && p.value.status === 409);
+
+      expect(successfulInvoices.length).toBe(1);
+      expect(failedInvoices.length).toBe(1);
+
+      // Verify only one active invoice exists in database
+      const activeInvoices = await prisma.invoice.findMany({
+        where: { 
+          visitId: visit.id,
+          status: { in: ['DRAFT', 'ISSUED'] }
+        },
+      });
+
+      expect(activeInvoices.length).toBe(1);
     });
 
     it('should reject an invoice for a non-existent visit', async () => {
@@ -490,6 +572,55 @@ describe('Invoices Module Tests (E2E)', () => {
         })
         .expect(400);
     });
+
+    it('should handle concurrent charge additions safely', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Simulate two concurrent charge additions
+      const [charge1, charge2] = await Promise.allSettled([
+        request(app.getHttpServer())
+          .post(`/api/invoices/${invoice.body.id}/charges`)
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            chargeType: 'FIXED',
+            chargeValue: 5,
+            description: 'Charge 1',
+          }),
+        request(app.getHttpServer())
+          .post(`/api/invoices/${invoice.body.id}/charges`)
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            chargeType: 'FIXED',
+            chargeValue: 10,
+            description: 'Charge 2',
+          }),
+      ]);
+
+      // Both should succeed
+      expect(charge1.status).toBe('fulfilled');
+      expect(charge2.status).toBe('fulfilled');
+
+      // Verify final invoice total includes both charges
+      const finalInvoice = await request(app.getHttpServer())
+        .get(`/api/invoices/${invoice.body.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      expect(finalInvoice.body.additionalCharges).toHaveLength(2);
+      expect(Number(finalInvoice.body.total)).toBe(45); // 30 + 5 + 10
+      expect(Number(finalInvoice.body.remaining)).toBe(45); // unpaid
+    });
   });
 
   describe('Invoice Revision and Replacement', () => {
@@ -597,7 +728,206 @@ describe('Invoices Module Tests (E2E)', () => {
       });
       expect(original?.replacedByInvoiceId).toBe(response.body.id);
       expect(original?.status).toBe('VOID');
-      expect(original?.status).toBe('VOID');
+    });
+
+    it('should handle replacement of fully paid invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Record full payment
+      await request(app.getHttpServer())
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          invoiceId: invoice.body.id,
+          amount: 30,
+          method: 'CASH',
+        })
+        .expect(201);
+
+      // Create replacement with higher amount
+      const response = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceBId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Replacement should inherit paid amount
+      expect(Number(response.body.paid)).toBe(30);
+      expect(Number(response.body.total)).toBe(40);
+      expect(Number(response.body.remaining)).toBe(10);
+      expect(response.body.paymentStatus).toBe('PARTIALLY_PAID');
+
+      // Original payments should remain on original invoice
+      const originalPayments = await prisma.payment.findMany({
+        where: { invoiceId: invoice.body.id },
+      });
+      expect(originalPayments.length).toBe(1);
+    });
+
+    it('should handle replacement of partially paid invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Record partial payment
+      await request(app.getHttpServer())
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          invoiceId: invoice.body.id,
+          amount: 15,
+          method: 'CASH',
+        })
+        .expect(201);
+
+      // Create replacement with same amount
+      const response = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Replacement should inherit partial payment
+      expect(Number(response.body.paid)).toBe(15);
+      expect(Number(response.body.total)).toBe(30);
+      expect(Number(response.body.remaining)).toBe(15);
+      expect(response.body.paymentStatus).toBe('PARTIALLY_PAID');
+    });
+
+    it('should handle replacement of unpaid invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Create replacement without any payments
+      const response = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Replacement should have no paid amount
+      expect(Number(response.body.paid)).toBe(0);
+      expect(Number(response.body.total)).toBe(30);
+      expect(Number(response.body.remaining)).toBe(30);
+      expect(response.body.paymentStatus).toBe('UNPAID');
+    });
+
+    it('should prevent concurrent replacement creation for same invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${invoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Simulate two concurrent replacement requests
+      const [replacement1, replacement2] = await Promise.allSettled([
+        request(app.getHttpServer())
+          .post(`/api/invoices/${invoice.body.id}/replacement`)
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            items: [{ serviceId: testServiceBId, quantity: 1 }],
+          }),
+        request(app.getHttpServer())
+          .post(`/api/invoices/${invoice.body.id}/replacement`)
+          .set('Authorization', `Bearer ${adminAccessToken}`)
+          .send({
+            items: [{ serviceId: testServiceBId, quantity: 1 }],
+          }),
+      ]);
+
+      // Exactly one should succeed (201), one should fail (409)
+      const successfulReplacements = [replacement1, replacement2].filter(p => p.status === 'fulfilled' && p.value.status === 201);
+      const failedReplacements = [replacement1, replacement2].filter(p => p.status === 'fulfilled' && p.value.status === 409);
+
+      expect(successfulReplacements.length).toBe(1);
+      expect(failedReplacements.length).toBe(1);
+
+      // Verify original invoice links to exactly one replacement
+      const originalInvoice = await prisma.invoice.findUnique({
+        where: { id: invoice.body.id },
+      });
+      expect(originalInvoice?.replacedByInvoiceId).toBeTruthy();
+
+      // Verify no orphan drafts exist (drafts without a replacement link and not the successful replacement)
+      const allDrafts = await prisma.invoice.findMany({
+        where: {
+          visitId: visit.id,
+          status: 'DRAFT',
+        },
+      });
+      // Only the successful replacement should exist as DRAFT
+      expect(allDrafts.length).toBe(1);
+      const successfulReplacement = successfulReplacements[0];
+      if (successfulReplacement.status === 'fulfilled') {
+        expect(allDrafts[0].id).toBe(successfulReplacement.value.body.id);
+      }
     });
 
     it('should reject receptionist creating replacement', async () => {
@@ -632,9 +962,7 @@ describe('Invoices Module Tests (E2E)', () => {
         })
         .expect(400);
     });
-  });
 
-  describe('Concurrency-Safe Invoice Numbering', () => {
     it('should assign final invoice number at issuance, not draft creation', async () => {
       const visit = await prisma.visit.create({
         data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
@@ -660,6 +988,51 @@ describe('Invoices Module Tests (E2E)', () => {
         .expect(200);
 
       expect(issuedInvoice.body.invoiceNumber).toMatch(/^INV-\d{6}$/);
+    });
+
+    it('should reject repeated issuance of already issued invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      const draftInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // First issuance should succeed
+      const firstIssuance = await request(app.getHttpServer())
+        .patch(`/api/invoices/${draftInvoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      const originalInvoiceNumber = firstIssuance.body.invoiceNumber;
+      const originalIssuedAt = firstIssuance.body.issuedAt;
+      const originalIssuedById = firstIssuance.body.issuedById;
+
+      // Second issuance should be rejected
+      const secondIssuance = await request(app.getHttpServer())
+        .patch(`/api/invoices/${draftInvoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(400);
+
+      expect(secondIssuance.body.message).toBe('Invoice is already issued and cannot be re-issued');
+
+      // Verify invoice data unchanged
+      const unchangedInvoice = await request(app.getHttpServer())
+        .get(`/api/invoices/${draftInvoice.body.id}`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .expect(200);
+
+      expect(unchangedInvoice.body.invoiceNumber).toBe(originalInvoiceNumber);
+      expect(unchangedInvoice.body.issuedAt).toBe(originalIssuedAt);
+      expect(unchangedInvoice.body.issuedById).toBe(originalIssuedById);
     });
 
     it('should generate unique sequential invoice numbers', async () => {
@@ -732,5 +1105,9 @@ describe('Invoices Module Tests (E2E)', () => {
       // Verify the number is not the temporary draft number
       expect(issuedInvoice.body.invoiceNumber).not.toBe(invoice.body.invoiceNumber);
     });
+  });
+
+  describe('Concurrency-Safe Invoice Numbering', () => {
+    // Empty - tests moved to main describe block
   });
 });

@@ -41,7 +41,7 @@ export class ReportsService {
         _sum: { total: true },
       }),
       this.prisma.payment.aggregate({
-        where: { paymentDate: { gte: fromDate, lte: toDate } },
+        where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
         _sum: { amount: true },
       }),
       this.prisma.invoice.aggregate({
@@ -88,7 +88,7 @@ export class ReportsService {
     const collectedRows = await this.prisma.$queryRaw<Array<{ day: Date; collected: string }>>`
       SELECT date_trunc('day', "paymentDate") AS day, SUM("amount") AS collected
       FROM "Payment"
-      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate}
+      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate} AND "status" = 'RECORDED'
       GROUP BY day ORDER BY day ASC
     `;
 
@@ -111,7 +111,7 @@ export class ReportsService {
     const { fromDate, toDate } = this.resolveRange(from, to);
     const rows = await this.prisma.payment.groupBy({
       by: ['method'],
-      where: { paymentDate: { gte: fromDate, lte: toDate } },
+      where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
       _sum: { amount: true },
       _count: { _all: true },
     });

@@ -185,11 +185,15 @@ export default function VisitsList() {
                   <td className="font-mono text-[#64748B]">{visit.patient.civilId[0]}{'X'.repeat(Math.max(0, visit.patient.civilId.length - 2))}{visit.patient.civilId.slice(-1)}</td>
                   <td className="text-[#1F2430]">{TYPE_LABELS[visit.type]}</td>
                   <td className="text-[#64748B] text-sm">
-                    {visit.invoice?.invoiceItems.length
-                      ? visit.invoice.invoiceItems.map((i) => i.serviceNameSnapshot).join('، ')
+                    {visit.invoices?.length
+                      ? visit.invoices.map((inv: any) => inv.invoiceItems.map((i: any) => i.serviceNameSnapshot).join('، ')).join(' | ')
                       : '—'}
                   </td>
-                  <td className="text-[#64748B]">{visit.invoice?.invoiceNumber || '—'}</td>
+                  <td className="text-[#64748B]">
+                    {visit.invoices?.length
+                      ? visit.invoices.map((inv: any) => inv.invoiceNumber).join(', ')
+                      : '—'}
+                  </td>
                   <td>
                     <span className="ui-badge" style={statusBadgeStyle(visit.status)}>
                       {STATUS_LABELS[visit.status]}
@@ -200,11 +204,11 @@ export default function VisitsList() {
                       <button onClick={() => navigate(`/visits/${visit.id}`)} aria-label="عرض تفاصيل الزيارة" className="icon-btn">
                         <Eye size={16} strokeWidth={1.75} />
                       </button>
-                      {visit.invoice && (
-                        <button onClick={() => navigate(`/invoices/${visit.invoice!.id}`)} aria-label="عرض الفاتورة" className="icon-btn">
+                      {visit.invoices?.[0] ? (
+                        <button onClick={() => navigate(`/invoices/${visit.invoices![0]!.id}`)} aria-label="عرض الفاتورة" className="icon-btn">
                           <ReceiptText size={16} strokeWidth={1.75} />
                         </button>
-                      )}
+                      ) : null}
                       {(visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS') && (
                         <button onClick={() => handleComplete(visit.id)} aria-label="إنهاء الزيارة" className="icon-btn">
                           <CheckCircle2 size={16} strokeWidth={1.75} />

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { InvoiceStatus, UserRole, Prisma } from '@prisma/client';
+import { InvoiceStatus, UserRole, Prisma, InvoicePaymentStatus } from '@prisma/client';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { AddChargeDto } from './dto/add-charge.dto';
@@ -77,7 +77,10 @@ export class InvoicesService {
   async create(createInvoiceDto: CreateInvoiceDto, userId: string, ipAddress?: string, userAgent?: string) {
     // Use transaction for atomic invoice creation with audit logging
     return this.prisma.$transaction(async (tx) => {
-      // Validate visit exists
+      // Lock the visit row to prevent concurrent invoice creation using SELECT ... FOR UPDATE
+      await tx.$queryRaw`SELECT * FROM "Visit" WHERE id = ${createInvoiceDto.visitId}::uuid FOR UPDATE`;
+      
+      // Re-read the visit after locking to get the actual data
       const visit = await tx.visit.findUnique({
         where: { id: createInvoiceDto.visitId },
       });
@@ -86,14 +89,17 @@ export class InvoicesService {
         throw new NotFoundException('Visit not found');
       }
 
-      // Allow multiple invoices per visit for replacement workflow
-      // Only check for existing DRAFT invoices to prevent duplicates
-      const existingDraftInvoice = await tx.invoice.findFirst({
-        where: { visitId: createInvoiceDto.visitId, status: 'DRAFT' },
+      // Check for existing active invoices (DRAFT or ISSUED) for this visit
+      // Historical VOID invoices are allowed to coexist
+      const existingActiveInvoice = await tx.invoice.findFirst({
+        where: { 
+          visitId: createInvoiceDto.visitId, 
+          status: { in: ['DRAFT', 'ISSUED'] }
+        },
       });
 
-      if (existingDraftInvoice) {
-        throw new ConflictException('This visit already has a draft invoice');
+      if (existingActiveInvoice) {
+        throw new ConflictException('This visit already has an active invoice');
       }
 
       // Validate and price every requested service, snapshotting name + price
@@ -278,6 +284,11 @@ export class InvoicesService {
 
       this.validateStatusTransition(invoice.status, updateStatusDto.status);
 
+      // Prevent re-issuance of already finalized invoices
+      if (invoice.status === 'ISSUED' && updateStatusDto.status === 'ISSUED') {
+        throw new BadRequestException('Invoice is already issued and cannot be re-issued');
+      }
+
       const data: { status: InvoiceStatus; issuedAt?: Date; issuedById?: string; invoiceNumber?: string } = {
         status: updateStatusDto.status,
       };
@@ -322,6 +333,10 @@ export class InvoicesService {
 
     // Use transaction to ensure atomic charge addition with audit logging
     return this.prisma.$transaction(async (tx) => {
+      // Lock the invoice row FIRST to prevent concurrent modifications
+      await tx.$queryRaw`SELECT * FROM "Invoice" WHERE id = ${invoiceId}::uuid FOR UPDATE`;
+      
+      // Re-read invoice with authoritative state after lock
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
         include: INVOICE_ITEM_INCLUDE,
@@ -336,6 +351,7 @@ export class InvoicesService {
         throw new BadRequestException('Additional charges can only be added to draft invoices');
       }
 
+      // Calculate charge based on fresh invoice state
       const chargeValue = new Decimal(addChargeDto.chargeValue);
       let calculatedAmount: Decimal;
       
@@ -358,7 +374,7 @@ export class InvoicesService {
         },
       });
 
-      // Recalculate invoice total
+      // Recalculate invoice total from authoritative stored charges in same transaction
       const allCharges = await tx.invoiceAdditionalCharge.findMany({
         where: { invoiceId },
       });
@@ -407,6 +423,7 @@ export class InvoicesService {
 
     // Use transaction for the complete replacement workflow with atomic number generation
     return this.prisma.$transaction(async (tx) => {
+      // Lock the original invoice row to prevent concurrent replacements
       const originalInvoice = await tx.invoice.findUnique({
         where: { id: originalInvoiceId },
         include: {
@@ -422,6 +439,19 @@ export class InvoicesService {
       // Only issued invoices can be replaced
       if (originalInvoice.status !== 'ISSUED') {
         throw new BadRequestException('Only issued invoices can be replaced');
+      }
+
+      // Lock the invoice row for update to prevent concurrent replacement requests
+      await tx.$queryRaw`SELECT * FROM "Invoice" WHERE id = ${originalInvoiceId}::uuid FOR UPDATE`;
+
+      // Re-fetch invoice after lock to check if replacement already exists
+      const lockedInvoice = await tx.invoice.findUnique({
+        where: { id: originalInvoiceId },
+        select: { replacedByInvoiceId: true },
+      });
+
+      if (lockedInvoice?.replacedByInvoiceId) {
+        throw new ConflictException('This invoice already has a replacement');
       }
 
       // Get the visit and patient information
@@ -493,6 +523,23 @@ export class InvoicesService {
       const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
       const total = subtotal.add(totalCharges).toDecimalPlaces(2);
       
+      // Financial model for paid invoice replacement:
+      // - Original payments remain on original invoice (preserves audit trail)
+      // - Replacement inherits the paid amount from original invoice
+      // - Replacement remaining balance = replacement.total - original.paid
+      // - This prevents debt duplication while maintaining auditability
+      const originalPaid = originalInvoice.paid || new Decimal(0);
+      const replacementPaid = originalPaid;
+      const replacementRemaining = total.sub(replacementPaid).toDecimalPlaces(2);
+      
+      // Determine payment status based on remaining balance
+      let replacementPaymentStatus: InvoicePaymentStatus = 'UNPAID';
+      if (replacementRemaining.equals(0)) {
+        replacementPaymentStatus = 'PAID';
+      } else if (replacementRemaining.lessThan(total)) {
+        replacementPaymentStatus = 'PARTIALLY_PAID';
+      }
+      
       // Replacement invoices start as DRAFT with temporary number
       const replacementInvoiceNumber = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
@@ -505,9 +552,9 @@ export class InvoicesService {
           status: 'DRAFT', // Start as draft, can be issued later
           subtotal,
           total,
-          paid: 0,
-          remaining: total,
-          paymentStatus: 'UNPAID',
+          paid: replacementPaid,
+          remaining: replacementRemaining,
+          paymentStatus: replacementPaymentStatus,
           createdById: userId,
           invoiceItems: {
             create: invoiceItemsData,
