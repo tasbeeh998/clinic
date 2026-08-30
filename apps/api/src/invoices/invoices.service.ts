@@ -1,9 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, UserRole, Prisma } from '@prisma/client';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
+import { AddChargeDto } from './dto/add-charge.dto';
+import { CreateReplacementDto } from './dto/create-replacement.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
 const INVOICE_ITEM_INCLUDE = {
   invoiceItems: {
@@ -13,6 +16,7 @@ const INVOICE_ITEM_INCLUDE = {
       },
     },
   },
+  additionalCharges: true,
   patient: {
     select: {
       id: true,
@@ -59,106 +63,152 @@ export class InvoicesService {
     }
   }
 
-  private async generateInvoiceNumber(): Promise<string> {
-    const count = await this.prisma.invoice.count();
-    return `INV-${String(count + 1).padStart(6, '0')}`;
+  private async generateInvoiceNumber(tx: Prisma.TransactionClient): Promise<string> {
+    // Use PostgreSQL sequence for true atomic invoice numbering
+    // Must use transaction client to ensure atomicity with invoice creation
+    const result = await tx.$queryRaw<Array<{ nextval: string }>>`
+      SELECT nextval('invoice_number_seq') as nextval
+    `;
+
+    const nextNumber = parseInt(result[0].nextval, 10);
+    return `INV-${String(nextNumber).padStart(6, '0')}`;
   }
 
   async create(createInvoiceDto: CreateInvoiceDto, userId: string, ipAddress?: string, userAgent?: string) {
-    // Validate visit exists
-    const visit = await this.prisma.visit.findUnique({
-      where: { id: createInvoiceDto.visitId },
-    });
+    // Use transaction for atomic invoice creation with audit logging
+    return this.prisma.$transaction(async (tx) => {
+      // Validate visit exists
+      const visit = await tx.visit.findUnique({
+        where: { id: createInvoiceDto.visitId },
+      });
 
-    if (!visit) {
-      throw new NotFoundException('Visit not found');
-    }
-
-    // A visit can have at most one invoice (schema enforces this too)
-    const existingInvoice = await this.prisma.invoice.findUnique({
-      where: { visitId: createInvoiceDto.visitId },
-    });
-
-    if (existingInvoice) {
-      throw new ConflictException('This visit already has an invoice');
-    }
-
-    // Validate and price every requested service, snapshotting name + price
-    const serviceIds = createInvoiceDto.items.map((item) => item.serviceId);
-    const services = await this.prisma.service.findMany({
-      where: { id: { in: serviceIds } },
-    });
-
-    const serviceMap = new Map(services.map((s) => [s.id, s]));
-    const invoiceItemsData = createInvoiceDto.items.map((item) => {
-      const service = serviceMap.get(item.serviceId);
-
-      if (!service) {
-        throw new NotFoundException(`Service ${item.serviceId} not found`);
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
       }
 
-      if (!service.isActive) {
-        throw new BadRequestException(`Service "${service.name}" is not active and cannot be invoiced`);
+      // Allow multiple invoices per visit for replacement workflow
+      // Only check for existing DRAFT invoices to prevent duplicates
+      const existingDraftInvoice = await tx.invoice.findFirst({
+        where: { visitId: createInvoiceDto.visitId, status: 'DRAFT' },
+      });
+
+      if (existingDraftInvoice) {
+        throw new ConflictException('This visit already has a draft invoice');
       }
 
-      const quantity = item.quantity ?? 1;
-      // Use the per-item override if provided, otherwise fall back to the
-      // service's current default price. The service's own price is never
-      // written to here — this only affects this one invoice's snapshot.
-      const unitPrice = item.unitPrice !== undefined ? item.unitPrice : Number(service.currentPrice);
-      const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
+      // Validate and price every requested service, snapshotting name + price
+      const serviceIds = createInvoiceDto.items.map((item) => item.serviceId);
+      const services = await tx.service.findMany({
+        where: { id: { in: serviceIds } },
+      });
 
-      return {
-        serviceId: service.id,
-        serviceNameSnapshot: service.name,
-        unitPriceSnapshot: unitPrice,
-        quantity,
-        lineTotal,
-      };
-    });
+      const serviceMap = new Map(services.map((s) => [s.id, s]));
+      const invoiceItemsData = createInvoiceDto.items.map((item) => {
+        const service = serviceMap.get(item.serviceId);
 
-    const subtotal = Math.round(invoiceItemsData.reduce((sum, i) => sum + i.lineTotal, 0) * 100) / 100;
-    // No tax and no additional fees are supported currently, so total mirrors subtotal.
-    const total = subtotal;
-    const invoiceNumber = await this.generateInvoiceNumber();
+        if (!service) {
+          throw new NotFoundException(`Service ${item.serviceId} not found`);
+        }
 
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        invoiceNumber,
-        visitId: visit.id,
-        patientId: visit.patientId,
-        status: 'DRAFT',
-        subtotal,
-        total,
-        paid: 0,
-        remaining: total,
-        paymentStatus: 'UNPAID',
-        createdById: userId,
-        invoiceItems: {
-          create: invoiceItemsData,
+        if (!service.isActive) {
+          throw new BadRequestException(`Service "${service.name}" is not active and cannot be invoiced`);
+        }
+
+        const quantity = item.quantity ?? 1;
+        // Use the per-item override if provided, otherwise fall back to the
+        // service's current default price. The service's own price is never
+        // written to here — this only affects this one invoice's snapshot.
+        const unitPrice = item.unitPrice !== undefined 
+          ? new Decimal(item.unitPrice) 
+          : service.currentPrice;
+        
+        // Calculate line total using Decimal arithmetic
+        const lineTotal = unitPrice.mul(quantity).toDecimalPlaces(2);
+
+        return {
+          serviceId: service.id,
+          serviceNameSnapshot: service.name,
+          unitPriceSnapshot: unitPrice,
+          quantity,
+          lineTotal,
+        };
+      });
+
+      // Calculate subtotal using Decimal arithmetic
+      const subtotal = invoiceItemsData.reduce((sum, i) => sum.add(i.lineTotal), new Decimal(0)).toDecimalPlaces(2);
+      
+      // Calculate additional charges
+      const additionalChargesData = (createInvoiceDto.additionalCharges || []).map(charge => {
+        const chargeValue = new Decimal(charge.chargeValue);
+        let calculatedAmount: Decimal;
+        
+        if (charge.chargeType === 'PERCENTAGE') {
+          // Percentage of subtotal
+          calculatedAmount = subtotal.mul(chargeValue.div(100)).toDecimalPlaces(2);
+        } else {
+          // Fixed amount
+          calculatedAmount = chargeValue.toDecimalPlaces(2);
+        }
+        
+        return {
+          chargeType: charge.chargeType,
+          chargeValue: chargeValue,
+          calculatedAmount: calculatedAmount,
+          description: charge.description,
+        };
+      });
+
+      // Calculate total from subtotal + additional charges
+      const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
+      const total = subtotal.add(totalCharges).toDecimalPlaces(2);
+      
+      // Draft invoices get a temporary placeholder; final number assigned at issuance
+      const tempInvoiceNumber = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber: tempInvoiceNumber,
+          visitId: visit.id,
+          patientId: visit.patientId,
+          status: 'DRAFT',
+          subtotal,
+          total,
+          paid: 0,
+          remaining: total,
+          paymentStatus: 'UNPAID',
+          createdById: userId,
+          invoiceItems: {
+            create: invoiceItemsData,
+          },
+          additionalCharges: {
+            create: additionalChargesData,
+          },
         },
-      },
-      include: INVOICE_ITEM_INCLUDE,
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      // Audit log within transaction
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'CREATE',
+          entityType: 'Invoice',
+          entityId: invoice.id,
+          beforeState: null,
+          afterState: {
+            invoiceNumber: invoice.invoiceNumber,
+            visitId: invoice.visitId,
+            patientId: invoice.patientId,
+            total: invoice.total,
+            status: invoice.status,
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      return invoice;
     });
-
-    await this.auditService.log(
-      userId,
-      'CREATE',
-      'Invoice',
-      invoice.id,
-      null,
-      {
-        invoiceNumber: invoice.invoiceNumber,
-        visitId: invoice.visitId,
-        patientId: invoice.patientId,
-        total: invoice.total,
-        status: invoice.status,
-      },
-      ipAddress,
-      userAgent,
-    );
-
-    return invoice;
   }
 
   async findAll(patientId?: string, status?: InvoiceStatus, page: number = 1, limit: number = 20) {
@@ -209,37 +259,319 @@ export class InvoicesService {
     return invoice;
   }
 
-  async updateStatus(id: string, updateStatusDto: UpdateInvoiceStatusDto, userId: string, ipAddress?: string, userAgent?: string) {
-    const invoice = await this.findOne(id);
-
-    this.validateStatusTransition(invoice.status, updateStatusDto.status);
-
-    const data: { status: InvoiceStatus; issuedAt?: Date; issuedById?: string } = {
-      status: updateStatusDto.status,
-    };
-
-    if (updateStatusDto.status === 'ISSUED') {
-      data.issuedAt = new Date();
-      data.issuedById = userId;
+  async updateStatus(id: string, updateStatusDto: UpdateInvoiceStatusDto, userId: string, userRole: UserRole, ipAddress?: string, userAgent?: string) {
+    // Only ADMIN can void invoices
+    if (updateStatusDto.status === 'VOID' && userRole !== 'ADMIN') {
+      throw new ForbiddenException('Only admin can void invoices');
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data,
-      include: INVOICE_ITEM_INCLUDE,
+    // Use transaction for atomic status change and number assignment
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id },
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      this.validateStatusTransition(invoice.status, updateStatusDto.status);
+
+      const data: { status: InvoiceStatus; issuedAt?: Date; issuedById?: string; invoiceNumber?: string } = {
+        status: updateStatusDto.status,
+      };
+
+      if (updateStatusDto.status === 'ISSUED') {
+        data.issuedAt = new Date();
+        data.issuedById = userId;
+        
+        // Assign final invoice number using PostgreSQL sequence within transaction
+        data.invoiceNumber = await this.generateInvoiceNumber(tx);
+      }
+
+      const updated = await tx.invoice.update({
+        where: { id },
+        data,
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      // Audit log within transaction
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'STATUS_CHANGE',
+          entityType: 'Invoice',
+          entityId: id,
+          beforeState: { status: invoice.status, invoiceNumber: invoice.invoiceNumber },
+          afterState: { status: updated.status, invoiceNumber: updated.invoiceNumber },
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      return updated;
     });
+  }
 
-    await this.auditService.log(
-      userId,
-      'STATUS_CHANGE',
-      'Invoice',
-      id,
-      { status: invoice.status },
-      { status: updated.status },
-      ipAddress,
-      userAgent,
-    );
+  async addCharge(invoiceId: string, addChargeDto: AddChargeDto, userId: string, userRole: UserRole, ipAddress?: string, userAgent?: string) {
+    // Admin and Receptionist can add charges
+    if (userRole !== 'ADMIN' && userRole !== 'RECEPTIONIST') {
+      throw new ForbiddenException('Only admin and receptionist can add charges');
+    }
 
-    return updated;
+    // Use transaction to ensure atomic charge addition with audit logging
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+
+      // Only allow adding charges to draft invoices
+      if (invoice.status !== 'DRAFT') {
+        throw new BadRequestException('Additional charges can only be added to draft invoices');
+      }
+
+      const chargeValue = new Decimal(addChargeDto.chargeValue);
+      let calculatedAmount: Decimal;
+      
+      if (addChargeDto.chargeType === 'PERCENTAGE') {
+        // Percentage of subtotal
+        calculatedAmount = invoice.subtotal.mul(chargeValue.div(100)).toDecimalPlaces(2);
+      } else {
+        // Fixed amount
+        calculatedAmount = chargeValue.toDecimalPlaces(2);
+      }
+
+      // Add the charge
+      await tx.invoiceAdditionalCharge.create({
+        data: {
+          invoiceId,
+          chargeType: addChargeDto.chargeType,
+          chargeValue: chargeValue,
+          calculatedAmount: calculatedAmount,
+          description: addChargeDto.description,
+        },
+      });
+
+      // Recalculate invoice total
+      const allCharges = await tx.invoiceAdditionalCharge.findMany({
+        where: { invoiceId },
+      });
+
+      const totalCharges = allCharges.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
+      const newTotal = invoice.subtotal.add(totalCharges).toDecimalPlaces(2);
+      const newRemaining = newTotal.sub(invoice.paid).toDecimalPlaces(2);
+
+      // Update invoice
+      const updated = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          total: newTotal,
+          remaining: newRemaining,
+        },
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      // Audit log within transaction
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'CHARGE_ADDED',
+          entityType: 'Invoice',
+          entityId: invoiceId,
+          beforeState: null,
+          afterState: {
+            chargeType: addChargeDto.chargeType,
+            chargeValue: addChargeDto.chargeValue,
+            calculatedAmount: calculatedAmount.toString(),
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  async createReplacement(originalInvoiceId: string, createReplacementDto: CreateReplacementDto, userId: string, userRole: UserRole, ipAddress?: string, userAgent?: string) {
+    // Only ADMIN can create invoice replacements
+    if (userRole !== 'ADMIN') {
+      throw new ForbiddenException('Only admin can create invoice replacements');
+    }
+
+    // Use transaction for the complete replacement workflow with atomic number generation
+    return this.prisma.$transaction(async (tx) => {
+      const originalInvoice = await tx.invoice.findUnique({
+        where: { id: originalInvoiceId },
+        include: {
+          invoiceItems: true,
+          additionalCharges: true,
+        },
+      });
+
+      if (!originalInvoice) {
+        throw new NotFoundException('Original invoice not found');
+      }
+
+      // Only issued invoices can be replaced
+      if (originalInvoice.status !== 'ISSUED') {
+        throw new BadRequestException('Only issued invoices can be replaced');
+      }
+
+      // Get the visit and patient information
+      const visit = await tx.visit.findUnique({
+        where: { id: originalInvoice.visitId },
+      });
+
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+
+      // Validate and price every requested service, snapshotting name + price
+      const serviceIds = createReplacementDto.items.map((item) => item.serviceId);
+      const services = await tx.service.findMany({
+        where: { id: { in: serviceIds } },
+      });
+
+      const serviceMap = new Map(services.map((s) => [s.id, s]));
+      const invoiceItemsData = createReplacementDto.items.map((item) => {
+        const service = serviceMap.get(item.serviceId);
+
+        if (!service) {
+          throw new NotFoundException(`Service ${item.serviceId} not found`);
+        }
+
+        if (!service.isActive) {
+          throw new BadRequestException(`Service "${service.name}" is not active and cannot be invoiced`);
+        }
+
+        const quantity = item.quantity ?? 1;
+        const unitPrice = item.unitPrice !== undefined 
+          ? new Decimal(item.unitPrice) 
+          : service.currentPrice;
+        
+        const lineTotal = unitPrice.mul(quantity).toDecimalPlaces(2);
+
+        return {
+          serviceId: service.id,
+          serviceNameSnapshot: service.name,
+          unitPriceSnapshot: unitPrice,
+          quantity,
+          lineTotal,
+        };
+      });
+
+      // Calculate subtotal
+      const subtotal = invoiceItemsData.reduce((sum, i) => sum.add(i.lineTotal), new Decimal(0)).toDecimalPlaces(2);
+      
+      // Calculate additional charges
+      const additionalChargesData = (createReplacementDto.additionalCharges || []).map(charge => {
+        const chargeValue = new Decimal(charge.chargeValue);
+        let calculatedAmount: Decimal;
+        
+        if (charge.chargeType === 'PERCENTAGE') {
+          calculatedAmount = subtotal.mul(chargeValue.div(100)).toDecimalPlaces(2);
+        } else {
+          calculatedAmount = chargeValue.toDecimalPlaces(2);
+        }
+        
+        return {
+          chargeType: charge.chargeType,
+          chargeValue: chargeValue,
+          calculatedAmount: calculatedAmount,
+          description: charge.description,
+        };
+      });
+
+      // Calculate total
+      const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
+      const total = subtotal.add(totalCharges).toDecimalPlaces(2);
+      
+      // Replacement invoices start as DRAFT with temporary number
+      const replacementInvoiceNumber = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      // Create replacement invoice
+      const replacementInvoice = await tx.invoice.create({
+        data: {
+          invoiceNumber: replacementInvoiceNumber,
+          visitId: visit.id,
+          patientId: visit.patientId,
+          status: 'DRAFT', // Start as draft, can be issued later
+          subtotal,
+          total,
+          paid: 0,
+          remaining: total,
+          paymentStatus: 'UNPAID',
+          createdById: userId,
+          invoiceItems: {
+            create: invoiceItemsData,
+          },
+          additionalCharges: {
+            create: additionalChargesData,
+          },
+        },
+        include: INVOICE_ITEM_INCLUDE,
+      });
+
+      // Mark original invoice as VOID and link to replacement
+      await tx.invoice.update({
+        where: { id: originalInvoiceId },
+        data: {
+          status: 'VOID',
+          replacedByInvoiceId: replacementInvoice.id,
+        },
+      });
+
+      // Audit log for original invoice void - use transaction client
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'INVOICE_REPLACED',
+          entityType: 'Invoice',
+          entityId: originalInvoiceId,
+          beforeState: { 
+            status: originalInvoice.status, 
+            invoiceNumber: originalInvoice.invoiceNumber,
+            total: originalInvoice.total.toString(),
+          },
+          afterState: { 
+            status: 'VOID', 
+            replacedByInvoiceId: replacementInvoice.id,
+            replacementInvoiceNumber: replacementInvoice.invoiceNumber,
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      // Audit log for replacement creation - use transaction client
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'CREATE',
+          entityType: 'Invoice',
+          entityId: replacementInvoice.id,
+          beforeState: null,
+          afterState: {
+            invoiceNumber: replacementInvoice.invoiceNumber,
+            visitId: replacementInvoice.visitId,
+            patientId: replacementInvoice.patientId,
+            total: replacementInvoice.total,
+            status: replacementInvoice.status,
+            replacesInvoiceId: originalInvoiceId,
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      return replacementInvoice;
+    });
   }
 }

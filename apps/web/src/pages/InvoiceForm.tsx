@@ -11,12 +11,19 @@ interface LineItem {
   unitPrice: number | null; // null until a service is picked or the user edits it
 }
 
+interface AdditionalCharge {
+  chargeType: 'PERCENTAGE' | 'FIXED';
+  chargeValue: number;
+  description: string;
+}
+
 export default function InvoiceForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const visitId = searchParams.get('visitId') || '';
 
   const [items, setItems] = useState<LineItem[]>([{ serviceId: '', quantity: 1, unitPrice: null }]);
+  const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const { data: visit, isLoading: visitLoading } = useQuery({
@@ -61,12 +68,22 @@ export default function InvoiceForm() {
     setItems(updated);
   };
 
-  const total = items.reduce((sum, item) => {
+  const subtotal = items.reduce((sum, item) => {
     const service = services.find((s) => s.id === item.serviceId);
     if (!service) return sum;
     const price = item.unitPrice !== null ? item.unitPrice : parseFloat(service.currentPrice);
     return sum + price * (item.quantity || 0);
   }, 0);
+
+  const totalCharges = additionalCharges.reduce((sum, charge) => {
+    if (charge.chargeType === 'PERCENTAGE') {
+      return sum + (subtotal * charge.chargeValue) / 100;
+    } else {
+      return sum + charge.chargeValue;
+    }
+  }, 0);
+
+  const total = subtotal + totalCharges;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +111,25 @@ export default function InvoiceForm() {
       return;
     }
 
-    createMutation.mutate({ visitId, items: validItems });
+    createMutation.mutate({ 
+      visitId, 
+      items: validItems,
+      additionalCharges: additionalCharges.length > 0 ? additionalCharges : undefined,
+    });
+  };
+
+  const addCharge = () => {
+    setAdditionalCharges([...additionalCharges, { chargeType: 'FIXED', chargeValue: 0, description: '' }]);
+  };
+
+  const removeCharge = (index: number) => {
+    setAdditionalCharges(additionalCharges.filter((_, i) => i !== index));
+  };
+
+  const updateCharge = (index: number, field: keyof AdditionalCharge, value: string | number) => {
+    const updated = [...additionalCharges];
+    updated[index] = { ...updated[index], [field]: value } as AdditionalCharge;
+    setAdditionalCharges(updated);
   };
 
   if (!visitId) {
@@ -199,9 +234,84 @@ export default function InvoiceForm() {
             + إضافة خدمة أخرى
           </button>
 
-          <div className="border-t border-gray-200 pt-4 flex justify-between items-center mb-6">
-            <span className="text-lg font-bold text-[#111844]">الإجمالي</span>
-            <span className="text-lg font-bold text-[#111844]">{total.toFixed(3)} د.ك</span>
+          {/* Additional Charges Section */}
+          <div className="border-t border-gray-200 pt-4 mb-6">
+            <h3 className="text-lg font-bold text-[#111844] mb-4">رسوم إضافية</h3>
+            {additionalCharges.map((charge, index) => (
+              <div key={index} className="flex gap-3 items-start mb-3 bg-gray-50 p-3 rounded">
+                <select
+                  value={charge.chargeType}
+                  onChange={(e) => updateCharge(index, 'chargeType', e.target.value as 'PERCENTAGE' | 'FIXED')}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+                >
+                  <option value="FIXED">مبلغ ثابت</option>
+                  <option value="PERCENTAGE">نسبة مئوية</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.001"
+                  value={charge.chargeValue}
+                  onChange={(e) => updateCharge(index, 'chargeValue', parseFloat(e.target.value) || 0)}
+                  placeholder={charge.chargeType === 'PERCENTAGE' ? 'النسبة' : 'المبلغ'}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+                />
+                <input
+                  type="text"
+                  value={charge.description}
+                  onChange={(e) => updateCharge(index, 'description', e.target.value)}
+                  placeholder="الوصف"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+                />
+                <div className="w-24 pt-2 text-gray-700 text-sm">
+                  {charge.chargeType === 'PERCENTAGE' 
+                    ? `${((subtotal * charge.chargeValue) / 100).toFixed(3)} د.ك`
+                    : `${charge.chargeValue.toFixed(3)} د.ك`
+                  }
+                </div>
+                {additionalCharges.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeCharge(index)}
+                    className="text-[#C4362B] hover:text-[#a32b22] px-2"
+                  >
+                    حذف
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addCharge}
+              className="text-[#4B5694] hover:text-[#111844] text-sm"
+            >
+              + إضافة رسوم إضافية
+            </button>
+          </div>
+
+          <div className="border-t border-gray-200 pt-4 space-y-2 mb-6">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">المجموع الفرعي</span>
+              <span className="text-gray-900">{subtotal.toFixed(3)} د.ك</span>
+            </div>
+            {additionalCharges.map((charge, index) => (
+              <div key={index} className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">
+                  {charge.description || (charge.chargeType === 'PERCENTAGE' ? 'رسوم نسبة' : 'رسوم ثابتة')}
+                  ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : `${charge.chargeValue.toFixed(3)} د.ك`})
+                </span>
+                <span className="text-gray-900">
+                  {charge.chargeType === 'PERCENTAGE' 
+                    ? ((subtotal * charge.chargeValue) / 100).toFixed(3)
+                    : charge.chargeValue.toFixed(3)
+                  } د.ك
+                </span>
+              </div>
+            ))}
+            <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
+              <span className="text-lg font-bold text-[#111844]">الإجمالي</span>
+              <span className="text-lg font-bold text-[#111844]">{total.toFixed(3)} د.ك</span>
+            </div>
           </div>
 
           <div className="flex gap-3">

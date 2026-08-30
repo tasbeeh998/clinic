@@ -62,14 +62,28 @@ export default function InvoiceDetail() {
     onError: (err: Error) => setFormError(err.message),
   });
 
-  const deletePaymentMutation = useMutation({
-    mutationFn: (paymentId: string) => paymentsService.deletePayment(paymentId),
+  const reversePaymentMutation = useMutation({
+    mutationFn: ({ paymentId, reversalNotes }: { paymentId: string; reversalNotes?: string }) => 
+      paymentsService.reversePayment(paymentId, reversalNotes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['payments', id] });
     },
     onError: (err: Error) => setFormError(err.message),
   });
+
+  const replacementMutation = useMutation({
+    mutationFn: (replacementData: { items: any[]; additionalCharges?: any[] }) => 
+      invoicesService.createReplacement(id!, replacementData),
+    onSuccess: (newInvoice) => {
+      navigate(`/invoices/${newInvoice.id}`);
+    },
+    onError: (err: Error) => setFormError(err.message),
+  });
+
+  const [showReplacementForm, setShowReplacementForm] = useState(false);
+  const [reversalNotes, setReversalNotes] = useState('');
+  const [paymentToReverse, setPaymentToReverse] = useState<string | null>(null);
 
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,7 +157,7 @@ export default function InvoiceDetail() {
                   إصدار الفاتورة
                 </button>
               )}
-              {invoice.status !== 'VOID' && (
+              {invoice.status !== 'VOID' && isAdmin && (
                 <button
                   onClick={() => {
                     if (window.confirm('هل أنت متأكد من إلغاء هذه الفاتورة؟')) {
@@ -154,6 +168,14 @@ export default function InvoiceDetail() {
                   className="px-4 py-2 border border-[#C4362B] text-[#C4362B] rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
                 >
                   إلغاء الفاتورة
+                </button>
+              )}
+              {invoice.status === 'ISSUED' && isAdmin && (
+                <button
+                  onClick={() => setShowReplacementForm(!showReplacementForm)}
+                  className="px-4 py-2 border border-[#4B5694] text-[#4B5694] rounded-md hover:bg-blue-50 transition-colors"
+                >
+                  إنشاء بديل
                 </button>
               )}
             </div>
@@ -205,6 +227,21 @@ export default function InvoiceDetail() {
           </table>
           <div className="border-t border-gray-200 p-4 space-y-1 text-sm">
             <div className="flex justify-between">
+              <span className="text-gray-600">المجموع الفرعي</span>
+              <span className="text-gray-900">{parseFloat(invoice.subtotal).toFixed(3)} د.ك</span>
+            </div>
+            {invoice.additionalCharges && invoice.additionalCharges.length > 0 && (
+              invoice.additionalCharges.map((charge) => (
+                <div key={charge.id} className="flex justify-between">
+                  <span className="text-gray-600">
+                    {charge.description || (charge.chargeType === 'PERCENTAGE' ? 'رسوم نسبة' : 'رسوم ثابتة')}
+                    ({charge.chargeType === 'PERCENTAGE' ? `${parseFloat(charge.chargeValue)}%` : `${parseFloat(charge.chargeValue).toFixed(3)} د.ك`})
+                  </span>
+                  <span className="text-gray-900">{parseFloat(charge.calculatedAmount).toFixed(3)} د.ك</span>
+                </div>
+              ))
+            )}
+            <div className="flex justify-between">
               <span className="text-gray-600">الإجمالي</span>
               <span className="font-bold text-[#111844]">{parseFloat(invoice.total).toFixed(3)} د.ك</span>
             </div>
@@ -218,6 +255,46 @@ export default function InvoiceDetail() {
             </div>
           </div>
         </div>
+
+        {/* Invoice Replacement Form - Admin Only */}
+        {showReplacementForm && isAdmin && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 className="text-lg font-bold text-[#111844] mb-4">إنشاء فاتورة بديلة</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              سيتم إلغاء الفاتورة الحالية وإنشاء فاتورة بديلة جديدة.
+            </p>
+            <button
+              onClick={() => {
+                if (window.confirm('هل أنت متأكد من إنشاء فاتورة بديلة؟')) {
+                  // Use current invoice items as basis for replacement
+                  const replacementItems = invoice.invoiceItems.map(item => ({
+                    serviceId: item.serviceId,
+                    quantity: item.quantity,
+                    unitPrice: parseFloat(item.unitPriceSnapshot),
+                  }));
+                  replacementMutation.mutate({ 
+                    items: replacementItems,
+                    additionalCharges: invoice.additionalCharges?.map(charge => ({
+                      chargeType: charge.chargeType,
+                      chargeValue: parseFloat(charge.chargeValue),
+                      description: charge.description || undefined,
+                    })) || []
+                  });
+                }
+              }}
+              disabled={replacementMutation.isPending}
+              className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50"
+            >
+              {replacementMutation.isPending ? 'جارٍ الإنشاء...' : 'إنشاء فاتورة بديلة'}
+            </button>
+            <button
+              onClick={() => setShowReplacementForm(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 mr-2"
+            >
+              إلغاء
+            </button>
+          </div>
+        )}
 
         {/* Record Payment */}
         {canRecordPayment && (
@@ -297,16 +374,46 @@ export default function InvoiceDetail() {
                     <td className="px-6 py-4 text-gray-600">{payment.recordedBy?.name || '—'}</td>
                     {isAdmin && (
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => {
-                            if (window.confirm('هل تريد حذف هذه الدفعة؟ سيتم تعديل رصيد الفاتورة.')) {
-                              deletePaymentMutation.mutate(payment.id);
-                            }
-                          }}
-                          className="text-[#C4362B] hover:text-[#a32b22] text-sm"
-                        >
-                          حذف
-                        </button>
+                        {paymentToReverse === payment.id ? (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="سبب الإلغاء"
+                              value={reversalNotes}
+                              onChange={(e) => setReversalNotes(e.target.value)}
+                              className="px-2 py-1 border border-gray-300 rounded text-sm w-32"
+                            />
+                            <button
+                              onClick={() => {
+                                reversePaymentMutation.mutate({ 
+                                  paymentId: payment.id, 
+                                  reversalNotes: reversalNotes || undefined 
+                                });
+                                setPaymentToReverse(null);
+                                setReversalNotes('');
+                              }}
+                              className="text-[#C4362B] hover:text-[#a32b22] text-sm font-medium"
+                            >
+                              تأكيد
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPaymentToReverse(null);
+                                setReversalNotes('');
+                              }}
+                              className="text-gray-600 hover:text-gray-900 text-sm"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setPaymentToReverse(payment.id)}
+                            className="text-[#C4362B] hover:text-[#a32b22] text-sm"
+                          >
+                            إلغاء الدفعة
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>

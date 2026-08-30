@@ -20,5 +20,6 @@
     "esModuleInterop": true,
     "types": ["jest", "node"]
   },
-  "exclude": ["node_modules", "dist", "prisma"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "prisma", "**/*.spec.ts", "**/*.test.ts"]
 }

@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ReversePaymentDto } from './dto/reverse-payment.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
 const PAYMENT_INCLUDE = {
   recordedBy: {
@@ -16,84 +18,104 @@ export class PaymentsService {
     private auditService: AuditService,
   ) {}
 
-  private computePaymentStatus(paid: number, total: number): 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' {
-    if (paid <= 0) return 'UNPAID';
-    if (paid >= total) return 'PAID';
+  private computePaymentStatus(paid: Decimal, total: Decimal): 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' {
+    if (paid.lte(0)) return 'UNPAID';
+    if (paid.gte(total)) return 'PAID';
     return 'PARTIALLY_PAID';
   }
 
   async create(createPaymentDto: CreatePaymentDto, userId: string, ipAddress?: string, userAgent?: string) {
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id: createPaymentDto.invoiceId },
-    });
+    // Use transaction with row locking for true concurrency safety
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the invoice row for update to prevent concurrent payment over-collection
+      const invoice = await tx.$queryRaw<Array<{
+        id: string;
+        status: string;
+        subtotal: string;
+        total: string;
+        paid: string;
+        remaining: string;
+        paymentStatus: string;
+      }>>`
+        SELECT id, status, subtotal, total, paid, remaining, "paymentStatus"
+        FROM "Invoice"
+        WHERE id = ${createPaymentDto.invoiceId}::uuid
+        FOR UPDATE
+      `;
 
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
+      if (!invoice[0]) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    if (invoice.status === 'DRAFT') {
-      throw new BadRequestException('Invoice must be issued before recording a payment');
-    }
+      if (invoice[0].status === 'DRAFT') {
+        throw new BadRequestException('Invoice must be issued before recording a payment');
+      }
 
-    if (invoice.status === 'VOID') {
-      throw new BadRequestException('Cannot record a payment on a voided invoice');
-    }
+      if (invoice[0].status === 'VOID') {
+        throw new BadRequestException('Cannot record a payment on a voided invoice');
+      }
 
-    const remaining = Number(invoice.remaining);
+      const remaining = new Decimal(invoice[0].remaining);
 
-    if (invoice.paymentStatus === 'PAID' || remaining <= 0) {
-      throw new BadRequestException('This invoice is already fully paid');
-    }
+      if (invoice[0].paymentStatus === 'PAID' || remaining.lte(0)) {
+        throw new BadRequestException('This invoice is already fully paid');
+      }
 
-    // Guard against overpayment; a small epsilon avoids false positives from decimal rounding.
-    if (createPaymentDto.amount > remaining + 0.001) {
-      throw new BadRequestException(
-        `Payment amount (${createPaymentDto.amount}) exceeds the remaining balance (${remaining})`,
-      );
-    }
+      // Guard against overpayment using Decimal comparison
+      const paymentAmount = new Decimal(createPaymentDto.amount);
+      if (paymentAmount.gt(remaining)) {
+        throw new BadRequestException(
+          `Payment amount (${createPaymentDto.amount}) exceeds the remaining balance (${remaining.toString()})`,
+        );
+      }
 
-    const total = Number(invoice.total);
-    const newPaid = Math.round((Number(invoice.paid) + createPaymentDto.amount) * 100) / 100;
-    const newRemaining = Math.round((total - newPaid) * 100) / 100;
-    const newPaymentStatus = this.computePaymentStatus(newPaid, total);
+      const total = new Decimal(invoice[0].total);
+      const paid = new Decimal(invoice[0].paid);
+      const newPaid = paid.add(paymentAmount).toDecimalPlaces(2);
+      const newRemaining = total.sub(newPaid).toDecimalPlaces(2);
+      const newPaymentStatus = this.computePaymentStatus(newPaid, total);
 
-    const [payment] = await this.prisma.$transaction([
-      this.prisma.payment.create({
+      // Create payment and update invoice atomically
+      const createdPayment = await tx.payment.create({
         data: {
-          invoiceId: invoice.id,
-          amount: createPaymentDto.amount,
+          invoiceId: invoice[0].id,
+          amount: paymentAmount,
           method: createPaymentDto.method,
           notes: createPaymentDto.notes,
           recordedById: userId,
         },
         include: PAYMENT_INCLUDE,
-      }),
-      this.prisma.invoice.update({
-        where: { id: invoice.id },
+      });
+
+      await tx.invoice.update({
+        where: { id: invoice[0].id },
         data: {
           paid: newPaid,
           remaining: newRemaining,
           paymentStatus: newPaymentStatus,
         },
-      }),
-    ]);
+      });
 
-    await this.auditService.log(
-      userId,
-      'CREATE',
-      'Payment',
-      payment.id,
-      null,
-      {
-        invoiceId: invoice.id,
-        amount: payment.amount,
-        method: payment.method,
-      },
-      ipAddress,
-      userAgent,
-    );
+      // Audit log within transaction
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'CREATE',
+          entityType: 'Payment',
+          entityId: createdPayment.id,
+          beforeState: null,
+          afterState: {
+            invoiceId: invoice[0].id,
+            amount: paymentAmount.toString(),
+            method: createPaymentDto.method,
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
 
-    return payment;
+      return createdPayment;
+    });
   }
 
   async findAllForInvoice(invoiceId: string) {
@@ -104,7 +126,10 @@ export class PaymentsService {
     }
 
     return this.prisma.payment.findMany({
-      where: { invoiceId },
+      where: { 
+        invoiceId,
+        status: 'RECORDED', // Only show non-reversed payments
+      },
       include: PAYMENT_INCLUDE,
       orderBy: { paymentDate: 'desc' },
     });
@@ -123,47 +148,105 @@ export class PaymentsService {
     return payment;
   }
 
-  async remove(id: string, userId: string, userRole: string, ipAddress?: string, userAgent?: string) {
+  async reverse(id: string, reversePaymentDto: ReversePaymentDto, userId: string, userRole: string, ipAddress?: string, userAgent?: string) {
     // Only an admin may reverse a recorded payment (financial correction).
     if (userRole !== 'ADMIN') {
-      throw new ForbiddenException('Only an admin can remove a recorded payment');
+      throw new ForbiddenException('Only an admin can reverse a recorded payment');
     }
 
-    const payment = await this.findOne(id);
-    const invoice = await this.prisma.invoice.findUnique({ where: { id: payment.invoiceId } });
+    // Use transaction for safe payment reversal with row locking
+    await this.prisma.$transaction(async (tx) => {
+      // Lock the payment row for update
+      const payment = await tx.$queryRaw<Array<{
+        id: string;
+        invoiceId: string;
+        amount: string;
+        method: string;
+        status: string;
+      }>>`
+        SELECT id, "invoiceId", amount, method, status
+        FROM "Payment"
+        WHERE id = ${id}::uuid
+        FOR UPDATE
+      `;
 
-    if (!invoice) {
-      throw new NotFoundException('Related invoice not found');
-    }
+      if (!payment[0]) {
+        throw new NotFoundException('Payment not found');
+      }
 
-    const total = Number(invoice.total);
-    const newPaid = Math.round((Number(invoice.paid) - Number(payment.amount)) * 100) / 100;
-    const newRemaining = Math.round((total - newPaid) * 100) / 100;
-    const newPaymentStatus = this.computePaymentStatus(newPaid, total);
+      // Prevent reversing the same payment twice
+      if (payment[0].status === 'REVERSED') {
+        throw new BadRequestException('This payment has already been reversed');
+      }
 
-    await this.prisma.$transaction([
-      this.prisma.payment.delete({ where: { id } }),
-      this.prisma.invoice.update({
-        where: { id: invoice.id },
+      // Lock the invoice row for update
+      const invoice = await tx.$queryRaw<Array<{
+        id: string;
+        total: string;
+        paid: string;
+      }>>`
+        SELECT id, total, paid
+        FROM "Invoice"
+        WHERE id = ${payment[0].invoiceId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!invoice[0]) {
+        throw new NotFoundException('Related invoice not found');
+      }
+
+      const total = new Decimal(invoice[0].total);
+      const paymentAmount = new Decimal(payment[0].amount);
+      const paid = new Decimal(invoice[0].paid);
+      const newPaid = paid.sub(paymentAmount).toDecimalPlaces(2);
+      const newRemaining = total.sub(newPaid).toDecimalPlaces(2);
+      const newPaymentStatus = this.computePaymentStatus(newPaid, total);
+
+      // Mark payment as reversed instead of deleting
+      await tx.payment.update({
+        where: { id },
+        data: {
+          status: 'REVERSED',
+          reversedAt: new Date(),
+          reversedBy: userId,
+          reversalNotes: reversePaymentDto.reversalNotes,
+        },
+      });
+
+      // Recalculate invoice balances
+      await tx.invoice.update({
+        where: { id: invoice[0].id },
         data: {
           paid: newPaid,
           remaining: newRemaining,
           paymentStatus: newPaymentStatus,
         },
-      }),
-    ]);
+      });
 
-    await this.auditService.log(
-      userId,
-      'DELETE',
-      'Payment',
-      id,
-      { invoiceId: invoice.id, amount: payment.amount, method: payment.method },
-      null,
-      ipAddress,
-      userAgent,
-    );
+      // Audit log within transaction
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'REVERSE',
+          entityType: 'Payment',
+          entityId: id,
+          beforeState: { 
+            invoiceId: payment[0].invoiceId, 
+            amount: payment[0].amount, 
+            method: payment[0].method,
+            status: payment[0].status,
+          },
+          afterState: { 
+            status: 'REVERSED', 
+            reversedAt: new Date(),
+            reversalNotes: reversePaymentDto.reversalNotes,
+          },
+          ipAddress,
+          userAgent,
+        },
+      });
+    });
 
-    return { id, deleted: true };
+    return { id, reversed: true };
   }
 }
