@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken, setAccessToken as setInMemoryAccessToken } from '../config/auth-token';
 
 export type PaymentMethod = 'CASH' | 'VISA' | 'KNET' | 'OTHER';
 
@@ -25,10 +26,7 @@ export interface CreatePaymentDto {
 
 class PaymentsService {
   private getAuthHeaders() {
-    // Note: The auth context now manages accessToken in memory
-    // This service method is kept for compatibility but should be updated
-    // to get the token from the auth context instead of localStorage
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -36,13 +34,11 @@ class PaymentsService {
   }
 
   setAccessToken(token: string) {
-    // Method to set token from auth context
-    // This is a temporary fix - service should get token from context
-    localStorage.setItem('accessToken', token);
+    setInMemoryAccessToken(token);
   }
 
   clearAccessToken() {
-    localStorage.removeItem('accessToken');
+    setInMemoryAccessToken(null);
   }
 
   async getPaymentsForInvoice(invoiceId: string): Promise<Payment[]> {

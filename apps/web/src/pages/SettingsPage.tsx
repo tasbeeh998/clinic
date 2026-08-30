@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usersService, AppUser } from '../services/users.service';
 import { auditService } from '../services/audit.service';
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 const APP_VERSION = 'v1.0.0';
 
@@ -379,7 +380,7 @@ function SecuritySection() {
     }
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = getAccessToken();
       const response = await fetch(`${apiBaseUrl}/auth/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },

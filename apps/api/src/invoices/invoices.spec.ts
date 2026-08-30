@@ -868,6 +868,128 @@ describe('Invoices Module Tests (E2E)', () => {
       expect(response.body.paymentStatus).toBe('UNPAID');
     });
 
+    it('should preserve payment credit across repeated replacements', async () => {
+      // Regression test for: Repeated replacements lose payment credit
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      // Create original invoice
+      const originalInvoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${originalInvoice.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Record full payment
+      const payment = await request(app.getHttpServer())
+        .post('/api/payments')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          invoiceId: originalInvoice.body.id,
+          amount: 30,
+          method: 'CASH',
+        })
+        .expect(201);
+
+      expect(payment.body.amount).toBe("30");
+      expect(payment.body.status).toBe('RECORDED');
+
+      // Create first replacement (Replacement A)
+      const replacementA = await request(app.getHttpServer())
+        .post(`/api/invoices/${originalInvoice.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceBId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Replacement A should have payment credit preserved from original
+      expect(Number(replacementA.body.paid)).toBe(30);
+      expect(Number(replacementA.body.remaining)).toBe(10); // 40 - 30 (capped at total)
+      expect(replacementA.body.paymentStatus).toBe('PARTIALLY_PAID');
+
+      // Issue Replacement A
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${replacementA.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      // Create second replacement (Replacement B) from Replacement A
+      const replacementB = await request(app.getHttpServer())
+        .post(`/api/invoices/${replacementA.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Replacement B should preserve payment credit from the chain
+      expect(Number(replacementB.body.paid)).toBe(30);
+      expect(Number(replacementB.body.remaining)).toBe(0); // 30 - 30
+      expect(replacementB.body.paymentStatus).toBe('PAID');
+
+      // Verify PaymentAllocation records are consistent
+      const allocationsB = await prisma.paymentAllocation.findMany({
+        where: { invoiceId: replacementB.body.id },
+        include: { payment: true },
+      });
+      expect(allocationsB.length).toBe(1);
+      expect(Number(allocationsB[0].amount)).toBe(30);
+      expect(allocationsB[0].payment.status).toBe('RECORDED');
+    });
+
+    it('should keep unpaid status when adding charge to unpaid invoice', async () => {
+      const visit = await prisma.visit.create({
+        data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },
+      });
+
+      // Create invoice
+      const invoice = await request(app.getHttpServer())
+        .post('/api/invoices')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          visitId: visit.id,
+          items: [{ serviceId: testServiceAId, quantity: 1 }],
+        })
+        .expect(201);
+
+      // Verify initial state is UNPAID
+      const initialInvoice = await prisma.invoice.findUnique({
+        where: { id: invoice.body.id },
+      });
+      expect(initialInvoice?.paymentStatus).toBe('UNPAID');
+      expect(Number(initialInvoice?.paid)).toBe(0);
+      expect(Number(initialInvoice?.remaining)).toBe(30);
+
+      // Add charge to the invoice
+      const updatedInvoice = await request(app.getHttpServer())
+        .post(`/api/invoices/${invoice.body.id}/charges`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({
+          chargeType: 'FIXED',
+          chargeValue: 10,
+          description: 'Additional fee',
+        })
+        .expect(201);
+
+      // Verify payment status is recalculated correctly
+      expect(Number(updatedInvoice.body.total)).toBe(40); // 30 + 10
+      expect(Number(updatedInvoice.body.paid)).toBe(0); // paid amount unchanged
+      expect(Number(updatedInvoice.body.remaining)).toBe(40); // 40 - 0
+      expect(updatedInvoice.body.paymentStatus).toBe('UNPAID');
+    });
+
     it('should prevent concurrent replacement creation for same invoice', async () => {
       const visit = await prisma.visit.create({
         data: { patientId: testPatientId, type: 'OTHER', createdById: adminUserId },

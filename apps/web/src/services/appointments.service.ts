@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export interface Appointment {
   id: string;
@@ -49,7 +50,7 @@ export interface AppointmentsListResponse {
 
 class AppointmentsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),

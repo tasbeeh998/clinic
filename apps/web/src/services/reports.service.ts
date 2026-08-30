@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export interface ReportsSummary {
   range: { from: string; to: string };
@@ -63,7 +64,7 @@ export interface OutstandingInvoiceRow {
 
 class ReportsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),

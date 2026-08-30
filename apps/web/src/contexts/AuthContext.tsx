@@ -42,10 +42,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(data.user);
           setAccessToken(data.accessToken);
           setInMemoryAccessToken(data.accessToken);
+        } else {
+          // Refresh failed - clear any existing auth state
+          setUser(null);
+          setAccessToken(null);
+          setInMemoryAccessToken(null);
         }
       } catch (error) {
-        // Session recovery failed - user needs to login
+        // Session recovery failed - clear any existing auth state
         console.error('Session recovery failed:', error);
+        setUser(null);
+        setAccessToken(null);
+        setInMemoryAccessToken(null);
       } finally {
         setIsLoading(false);
       }
@@ -64,11 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, rememberMe }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      const errorData = await response.json().catch(() => ({ message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' }));
+      throw new Error(errorData.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
+
+    const data = await response.json();
 
     setUser(data.user);
     setAccessToken(data.accessToken);
@@ -97,11 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
         throw new Error('Failed to refresh token');
       }
+
+      const data = await response.json();
 
       // Update both access token and user data from server
       setAccessToken(data.accessToken);
@@ -110,7 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setInMemoryAccessToken(data.accessToken);
     } catch (error) {
-      logout();
+      // On refresh failure, clear auth state completely
+      setUser(null);
+      setAccessToken(null);
+      setInMemoryAccessToken(null);
       throw error;
     }
   };

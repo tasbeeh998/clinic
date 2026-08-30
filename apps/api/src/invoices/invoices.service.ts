@@ -385,12 +385,21 @@ export class InvoicesService {
       const newTotal = invoice.subtotal.add(totalCharges).toDecimalPlaces(2);
       const newRemaining = newTotal.sub(invoice.paid).toDecimalPlaces(2);
 
+      // Recalculate payment status based on new total and existing paid amount
+      let newPaymentStatus: InvoicePaymentStatus = 'UNPAID';
+      if (newRemaining.equals(0)) {
+        newPaymentStatus = 'PAID';
+      } else if (newRemaining.lessThan(newTotal)) {
+        newPaymentStatus = 'PARTIALLY_PAID';
+      }
+
       // Update invoice
       const updated = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
           total: newTotal,
           remaining: newRemaining,
+          paymentStatus: newPaymentStatus,
         },
         include: INVOICE_ITEM_INCLUDE,
       });
@@ -521,22 +530,47 @@ export class InvoicesService {
       const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
       const total = subtotal.add(totalCharges).toDecimalPlaces(2);
       
-      // Payments stay attached to their source invoice.  The replacement receives
-      // explicit, capped allocations from still-recorded source payments. This
-      // makes reversals observable and avoids a mutable copied `paid` value.
-      const sourcePayments = await tx.payment.findMany({
-        where: { invoiceId: originalInvoiceId, status: 'RECORDED' },
-        orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }],
-        select: { id: true, amount: true },
+      // For payment credit, we need to handle two cases:
+      // 1. Original invoice has direct payments (no allocations) - create allocations from them
+      // 2. Original invoice has allocations (it's a replacement) - copy those allocations
+      const sourceAllocations = await tx.paymentAllocation.findMany({
+        where: { invoiceId: originalInvoiceId },
+        include: {
+          payment: {
+            select: { id: true, amount: true, status: true },
+          },
+        },
       });
-      const originalPaid = sourcePayments.reduce((sum, payment) => sum.add(payment.amount), new Decimal(0)).toDecimalPlaces(2);
-      let allocatable = total;
-      const allocations = sourcePayments.flatMap((payment) => {
-        const amount = Decimal.min(payment.amount, allocatable).toDecimalPlaces(2);
-        allocatable = allocatable.sub(amount);
-        return amount.gt(0) ? [{ paymentId: payment.id, amount }] : [];
-      });
-      const replacementPaid = allocations.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0)).toDecimalPlaces(2);
+      
+      let validAllocations: Array<{ paymentId: string; amount: Decimal }> = [];
+      
+      // If there are allocations, this is a replacement invoice - copy those allocations
+      if (sourceAllocations.length > 0) {
+        validAllocations = sourceAllocations
+          .filter(allocation => allocation.payment.status === 'RECORDED')
+          .map(allocation => ({
+            paymentId: allocation.paymentId,
+            amount: allocation.amount,
+          }));
+      } else {
+        // If there are no allocations, this is the original invoice with direct payments
+        // We need to create allocations from the direct payments
+        const directPayments = await tx.payment.findMany({
+          where: { invoiceId: originalInvoiceId, status: 'RECORDED' },
+          orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }],
+          select: { id: true, amount: true },
+        });
+        
+        let allocatable = total;
+        validAllocations = directPayments.flatMap((payment) => {
+          const amount = Decimal.min(payment.amount, allocatable).toDecimalPlaces(2);
+          allocatable = allocatable.sub(amount);
+          return amount.gt(0) ? [{ paymentId: payment.id, amount }] : [];
+        });
+      }
+      
+      // Calculate the total credit from allocations
+      const replacementPaid = validAllocations.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0)).toDecimalPlaces(2);
       const replacementRemaining = total.sub(replacementPaid).toDecimalPlaces(2);
       
       // Determine payment status based on remaining balance
@@ -549,6 +583,12 @@ export class InvoicesService {
       
       // Replacement invoices start as DRAFT with temporary number
       const replacementInvoiceNumber = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      // Create payment allocations for the replacement invoice
+      const allocationData = validAllocations.map(allocation => ({
+        paymentId: allocation.paymentId,
+        amount: allocation.amount,
+      }));
 
       // Create replacement invoice
       const replacementInvoice = await tx.invoice.create({
@@ -569,9 +609,9 @@ export class InvoicesService {
           additionalCharges: {
             create: additionalChargesData,
           },
-          paymentAllocations: {
-            create: allocations,
-          },
+          paymentAllocations: allocationData.length > 0 ? {
+            create: allocationData,
+          } : undefined,
         },
         include: INVOICE_ITEM_INCLUDE,
       });
@@ -582,9 +622,6 @@ export class InvoicesService {
         data: {
           status: 'VOID',
           replacedByInvoiceId: replacementInvoice.id,
-          paid: originalPaid,
-          remaining: Decimal.max(originalInvoice.total.sub(originalPaid), new Decimal(0)).toDecimalPlaces(2),
-          paymentStatus: originalPaid.gte(originalInvoice.total) ? 'PAID' : originalPaid.gt(0) ? 'PARTIALLY_PAID' : 'UNPAID',
         },
       });
 
