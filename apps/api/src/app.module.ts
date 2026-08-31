@@ -22,7 +22,7 @@ import { BackupModule } from './backup/backup.module';
       isGlobal: true,
       envFilePath: '.env',
       validate: (config) => {
-        const requiredEnvVars = ['NODE_ENV', 'PORT', 'DATABASE_URL', 'POSTGRES_DB'];
+        const requiredEnvVars = ['NODE_ENV', 'PORT', 'DATABASE_URL'];
         const missingEnvVars = requiredEnvVars.filter((envVar) => !config[envVar]);
 
         if (missingEnvVars.length > 0) {

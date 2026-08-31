@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createGzip, createGunzip } from 'zlib';
 import { createReadStream, createWriteStream } from 'fs';
 import * as fs from 'fs/promises';
@@ -23,18 +23,46 @@ export interface BackupManifestEntry {
 export class BackupService implements OnModuleInit {
   private readonly logger = new Logger(BackupService.name);
 
+  // Concurrency control: prevent overlapping backup/restore operations
+  private operationInProgress = false;
+  private operationQueue: Array<() => Promise<unknown>> = [];
+
   constructor(private auditService: AuditService) {}
 
-  onModuleInit() {
-    // Validate required backup configuration at startup
-    if (!process.env.POSTGRES_DB) {
-      throw new Error('POSTGRES_DB environment variable is required for backup operations');
+  private async withOperationLock<T>(operation: () => Promise<T>): Promise<T> {
+    // Wait for current operation to complete
+    while (this.operationInProgress) {
+      // eslint-disable-next-line no-undef
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
     }
 
+    this.operationInProgress = true;
+    try {
+      return await operation();
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  onModuleInit() {
     // Validate backup directory
     const backupDir = process.env.BACKUP_DIR || '/app/backups';
     if (!path.isAbsolute(backupDir)) {
       throw new Error('BACKUP_DIR must be an absolute path for security');
+    }
+
+    // Verify pg_dump and psql are available in PATH
+    try {
+      const pgDumpCheck = spawnSync('which', ['pg_dump']);
+      if (pgDumpCheck.status !== 0) {
+        throw new Error('pg_dump not found in PATH. PostgreSQL client tools must be installed for backup operations.');
+      }
+      const psqlCheck = spawnSync('which', ['psql']);
+      if (psqlCheck.status !== 0) {
+        throw new Error('psql not found in PATH. PostgreSQL client tools must be installed for backup operations.');
+      }
+    } catch {
+      this.logger.warn('Could not verify pg_dump/psql availability');
     }
 
     this.logger.log(`Backup service initialized with directory: ${backupDir}`);
@@ -51,7 +79,22 @@ export class BackupService implements OnModuleInit {
   }
 
   private getDbConnectionParams() {
-    const database = process.env.POSTGRES_DB;
+    // Extract database name from DATABASE_URL if POSTGRES_DB not explicitly set
+    // DATABASE_URL format: postgresql://user:password@host:port/database
+    let database = process.env.POSTGRES_DB;
+    if (!database && process.env.DATABASE_URL) {
+      try {
+        // eslint-disable-next-line no-undef
+        const url = new URL(process.env.DATABASE_URL);
+        database = url.pathname.substring(1); // Remove leading slash
+      } catch {
+        throw new Error('Could not extract database name from DATABASE_URL. Please set POSTGRES_DB explicitly.');
+      }
+    }
+
+    if (!database) {
+      throw new Error('POSTGRES_DB environment variable is required for backup operations');
+    }
 
     // CRITICAL: Validate that we're not accidentally targeting production during test verification
     if (process.env.NODE_ENV === 'test' && database === 'clinic_db') {
@@ -98,71 +141,73 @@ export class BackupService implements OnModuleInit {
   }
 
   async runBackup(triggeredBy: 'manual' | 'scheduled' | 'pre-restore-safety', userId?: string, ipAddress?: string, userAgent?: string) {
-    await this.ensureBackupDir();
-    const { host, port, user, password, database } = this.getDbConnectionParams();
+    return this.withOperationLock(async () => {
+      await this.ensureBackupDir();
+      const { host, port, user, password, database } = this.getDbConnectionParams();
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `clinic_backup_${timestamp}.sql.gz`;
-    const filepath = path.join(this.backupDir, filename);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `clinic_backup_${timestamp}.sql.gz`;
+      const filepath = path.join(this.backupDir, filename);
 
-    // --clean --if-exists: the dump includes DROP statements before each
-    // CREATE, so restoring it cleanly replaces existing objects rather than
-    // erroring on "already exists".
-    const pgDump = spawn(
-      'pg_dump',
-      ['--host', host, '--port', port, '--username', user, '--format', 'plain', '--clean', '--if-exists', '--no-owner', database],
-      { env: { ...process.env, PGPASSWORD: password } },
-    );
+      // --clean --if-exists: the dump includes DROP statements before each
+      // CREATE, so restoring it cleanly replaces existing objects rather than
+      // erroring on "already exists".
+      const pgDump = spawn(
+        'pg_dump',
+        ['--host', host, '--port', port, '--username', user, '--format', 'plain', '--clean', '--if-exists', '--no-owner', database],
+        { env: { ...process.env, PGPASSWORD: password } },
+      );
 
-    const gzip = createGzip();
-    const out = createWriteStream(filepath);
+      const gzip = createGzip();
+      const out = createWriteStream(filepath);
 
-    let stderr = '';
-    pgDump.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      let stderr = '';
+      pgDump.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
-    await new Promise<void>((resolve, reject) => {
-      pgDump.stdout.pipe(gzip).pipe(out);
-      pgDump.on('error', reject);
-      out.on('error', reject);
-      out.on('finish', resolve);
-      pgDump.on('close', (code) => {
-        if (code !== 0) reject(new Error(`pg_dump exited with code ${code}: ${stderr}`));
+      await new Promise<void>((resolve, reject) => {
+        pgDump.stdout.pipe(gzip).pipe(out);
+        pgDump.on('error', reject);
+        out.on('error', reject);
+        out.on('finish', resolve);
+        pgDump.on('close', (code) => {
+          if (code !== 0) reject(new Error(`pg_dump exited with code ${code}: ${stderr}`));
+        });
+      }).catch(async (err) => {
+        // Clean up a partial file rather than leaving a corrupt backup behind.
+        await fs.unlink(filepath).catch(() => undefined);
+        throw new InternalServerErrorException(`Backup failed: ${err.message}`);
       });
-    }).catch(async (err) => {
-      // Clean up a partial file rather than leaving a corrupt backup behind.
-      await fs.unlink(filepath).catch(() => undefined);
-      throw new InternalServerErrorException(`Backup failed: ${err.message}`);
-    });
 
-    const stat = await fs.stat(filepath);
-    let uploadedToRemote = false;
+      const stat = await fs.stat(filepath);
+      let uploadedToRemote = false;
 
-    if (this.isRemoteStorageConfigured()) {
-      try {
-        await this.uploadToRemote(filepath, filename);
-        uploadedToRemote = true;
-      } catch (err) {
-        this.logger.error('Remote backup upload failed (backup itself still succeeded locally)', err instanceof Error ? err.stack : err);
+      if (this.isRemoteStorageConfigured()) {
+        try {
+          await this.uploadToRemote(filepath, filename);
+          uploadedToRemote = true;
+        } catch (err) {
+          this.logger.error('Remote backup upload failed (backup itself still succeeded locally)', err instanceof Error ? err.stack : err);
+        }
       }
-    }
 
-    const manifest = await this.readManifest();
-    manifest.push({
-      filename,
-      sizeBytes: stat.size,
-      createdAt: new Date().toISOString(),
-      triggeredBy,
-      uploadedToRemote,
+      const manifest = await this.readManifest();
+      manifest.push({
+        filename,
+        sizeBytes: stat.size,
+        createdAt: new Date().toISOString(),
+        triggeredBy,
+        uploadedToRemote,
+      });
+      await this.writeManifest(manifest);
+
+      await this.pruneOldBackups();
+
+      if (userId) {
+        await this.auditService.logUserAction(userId, 'BACKUP_CREATED', 'System', filename, ipAddress, userAgent);
+      }
+
+      return { filename, sizeBytes: stat.size, createdAt: new Date().toISOString(), triggeredBy, uploadedToRemote };
     });
-    await this.writeManifest(manifest);
-
-    await this.pruneOldBackups();
-
-    if (userId) {
-      await this.auditService.logUserAction(userId, 'BACKUP_CREATED', 'System', filename, ipAddress, userAgent);
-    }
-
-    return { filename, sizeBytes: stat.size, createdAt: new Date().toISOString(), triggeredBy, uploadedToRemote };
   }
 
   async listBackups() {
@@ -170,13 +215,16 @@ export class BackupService implements OnModuleInit {
     const manifest = await this.readManifest();
     // Reconcile against what's actually on disk — a manifest entry for a
     // file that was manually deleted shouldn't be reported as available.
+    // Treat manifest contents as untrusted - validate each filename.
     const existing: BackupManifestEntry[] = [];
     for (const entry of manifest) {
       try {
-        await fs.access(path.join(this.backupDir, entry.filename));
+        // Use centralized safe path resolver to prevent manifest path traversal
+        const safePath = this.resolveSafePath(entry.filename);
+        await fs.access(safePath);
         existing.push(entry);
       } catch {
-        // File no longer present — drop it from the list.
+        // File no longer present or invalid filename — drop it from the list.
       }
     }
     if (existing.length !== manifest.length) {
@@ -210,47 +258,80 @@ export class BackupService implements OnModuleInit {
     return base;
   }
 
-  async restoreBackup(filename: string, userId: string, ipAddress?: string, userAgent?: string) {
+  // Centralized safe filename/path resolver - treats manifest as untrusted
+  private resolveSafePath(filename: string): string {
     const safeFilename = this.sanitizeFilename(filename);
-    const filepath = path.join(this.backupDir, safeFilename);
+    const fullPath = path.join(this.backupDir, safeFilename);
 
-    try {
-      await fs.access(filepath);
-    } catch {
-      throw new BadRequestException('Backup file not found');
+    // Verify the resolved path is still inside BACKUP_DIR (prevent symlink escape)
+    const resolvedPath = path.resolve(fullPath);
+    const resolvedBackupDir = path.resolve(this.backupDir);
+
+    if (!resolvedPath.startsWith(resolvedBackupDir)) {
+      throw new BadRequestException('Invalid backup filename: path traversal not allowed');
     }
 
-    // Safety net: always take a fresh backup of the CURRENT state right
-    // before overwriting it, so a restore is never a one-way door.
-    await this.runBackup('pre-restore-safety', userId, ipAddress, userAgent);
+    return fullPath;
+  }
 
-    const { host, port, user, password, database } = this.getDbConnectionParams();
+  async restoreBackup(filename: string, userId: string, ipAddress?: string, userAgent?: string) {
+    return this.withOperationLock(async () => {
+      const filepath = this.resolveSafePath(filename);
 
-    const psql = spawn(
-      'psql',
-      ['--host', host, '--port', port, '--username', user, '--dbname', database],
-      { env: { ...process.env, PGPASSWORD: password } },
-    );
+      try {
+        await fs.access(filepath);
+      } catch {
+        throw new BadRequestException('Backup file not found');
+      }
 
-    let stderr = '';
-    psql.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      // Safety net: always take a fresh backup of the CURRENT state right
+      // before overwriting it, so a restore is never a one-way door.
+      await this.runBackup('pre-restore-safety', userId, ipAddress, userAgent);
 
-    await new Promise<void>((resolve, reject) => {
-      const gunzip = createGunzip();
-      const input = createReadStream(filepath);
-      input.pipe(gunzip).pipe(psql.stdin);
-      psql.on('error', reject);
-      psql.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`psql exited with code ${code}: ${stderr}`));
+      const { host, port, user, password, database } = this.getDbConnectionParams();
+
+      // Use ON_ERROR_STOP to ensure psql stops on first SQL error
+      // Use single-transaction to ensure atomic restore
+      const psql = spawn(
+        'psql',
+        [
+          '--host', host,
+          '--port', port,
+          '--username', user,
+          '--dbname', database,
+          '--set=ON_ERROR_STOP=on',
+          '--single-transaction',
+        ],
+        { env: { ...process.env, PGPASSWORD: password } },
+      );
+
+      let stderr = '';
+      let stdout = '';
+      psql.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      psql.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+
+      await new Promise<void>((resolve, reject) => {
+        const gunzip = createGunzip();
+        const input = createReadStream(filepath);
+        input.pipe(gunzip).pipe(psql.stdin);
+        psql.on('error', reject);
+        psql.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`psql exited with code ${code}. stderr: ${stderr}, stdout: ${stdout}`));
+          }
+        });
+      }).catch((err) => {
+        // Restore failed - pre-restore safety backup remains available
+        this.logger.error(`Restore failed: ${err.message}`);
+        throw new InternalServerErrorException(`Restore failed: ${err.message}`);
       });
-    }).catch((err) => {
-      throw new InternalServerErrorException(`Restore failed: ${err.message}`);
+
+      await this.auditService.logUserAction(userId, 'RESTORE_EXECUTED', 'System', filename, ipAddress, userAgent);
+
+      return { restored: filename, restoredAt: new Date().toISOString() };
     });
-
-    await this.auditService.logUserAction(userId, 'RESTORE_EXECUTED', 'System', safeFilename, ipAddress, userAgent);
-
-    return { restored: safeFilename, restoredAt: new Date().toISOString() };
   }
 
   private async pruneOldBackups() {
@@ -260,8 +341,14 @@ export class BackupService implements OnModuleInit {
 
     for (const entry of manifest) {
       if (new Date(entry.createdAt).getTime() < cutoff) {
-        await fs.unlink(path.join(this.backupDir, entry.filename)).catch(() => undefined);
-        this.logger.log(`Pruned expired backup: ${entry.filename}`);
+        // Use centralized safe path resolver to prevent manifest path traversal
+        try {
+          const safePath = this.resolveSafePath(entry.filename);
+          await fs.unlink(safePath).catch(() => undefined);
+          this.logger.log(`Pruned expired backup: ${entry.filename}`);
+        } catch {
+          // Invalid filename or file already gone - just skip
+        }
       } else {
         kept.push(entry);
       }
