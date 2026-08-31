@@ -30,9 +30,27 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_password}@postgres:5432/${POSTGRES_DB:-clinic_db}
       FRONTEND_URL: http://localhost:3000
+      POSTGRES_USER: ${POSTGRES_USER:-clinic_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic_password}
+      POSTGRES_DB: ${POSTGRES_DB:-clinic_db}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      BACKUP_DIR: /app/backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      # Plain host-filesystem directory — deliberately NOT the same Docker
+      # volume Postgres itself uses, so a lost/corrupted postgres_data volume
+      # doesn't take the backups down with it. On the eventual VPS, this
+      # host path is what you'd point an off-server sync/rsync job at.
+      - ./backups:/app/backups
   web:
     build:
       context: .
@@ -50,3 +68,4 @@ services:
 
 volumes:
   postgres_data:
+  backups:

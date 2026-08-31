@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { usersService, AppUser } from '../services/users.service';
 import { auditService } from '../services/audit.service';
+import { backupService, BackupStatus, BackupEntry } from '../services/backup.service';
 import { apiBaseUrl } from '../config/api';
 import { getAccessToken } from '../config/auth-token';
 
@@ -126,6 +127,59 @@ export default function SettingsPage() {
 
 // ---------- النسخ الاحتياطي والاستعادة ----------
 function BackupSection() {
+  const [status, setStatus] = useState<BackupStatus | null>(null);
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmRestore, setConfirmRestore] = useState<BackupEntry | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, b] = await Promise.all([backupService.getStatus(), backupService.listBackups()]);
+      setStatus(s);
+      setBackups(b);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل تحميل بيانات النسخ الاحتياطي');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleRunBackup = async () => {
+    setRunning(true);
+    setError('');
+    try {
+      await backupService.runBackup();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل إنشاء النسخة الاحتياطية');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!confirmRestore) return;
+    setRestoring(true);
+    setError('');
+    try {
+      await backupService.restoreBackup(confirmRestore.filename);
+      setConfirmRestore(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل استعادة النسخة الاحتياطية');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+
   return (
     <div className="ui-card p-5">
       <h2 className="text-[16px] font-bold text-[#102F63] mb-1 flex items-center gap-2">
@@ -133,36 +187,78 @@ function BackupSection() {
         النسخ الاحتياطي والاستعادة
       </h2>
       <p className="text-xs text-[#94A3B8] mb-5">
-        نظام النسخ الاحتياطي غير مفعّل بعد على هذا الخادم. الواجهة جاهزة، وسيتم تفعيل الأزرار أدناه فور ربط خدمة النسخ الاحتياطي الفعلية بالخادم.
+        نسخة احتياطية تلقائية يوميًا الساعة 3:00 صباحًا، بالاحتفاظ بآخر {status?.retentionDays ?? '—'} يوم.
+        {status && !status.remoteStorageConfigured && ' التخزين الخارجي (خارج السيرفر) غير مفعّل حاليًا — النسخ محفوظة على السيرفر نفسه فقط.'}
       </p>
 
-      <div className="grid md:grid-cols-2 gap-4 mb-5">
-        <div className="p-4 rounded-xl border border-[#E2E8F0]">
-          <div className="text-xs text-[#94A3B8] mb-1">آخر نسخة احتياطية</div>
-          <div className="font-bold text-[#94A3B8]">لا توجد نسخ سابقة</div>
-        </div>
-        <div className="p-4 rounded-xl border border-[#E2E8F0]">
-          <div className="text-xs text-[#94A3B8] mb-1">حالة النسخ الاحتياطي</div>
-          <div className="font-bold text-[#94A3B8]">غير مفعّل</div>
-        </div>
-        <div className="p-4 rounded-xl border border-[#E2E8F0]">
-          <div className="text-xs text-[#94A3B8] mb-1">تكرار النسخ</div>
-          <div className="font-bold text-[#94A3B8]">غير محدد</div>
-        </div>
-        <div className="p-4 rounded-xl border border-[#E2E8F0]">
-          <div className="text-xs text-[#94A3B8] mb-1">المساحة المستخدمة</div>
-          <div className="font-bold text-[#94A3B8]">—</div>
-        </div>
-      </div>
+      {error && <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-[#C4362B] rounded-lg text-sm">{error}</div>}
 
-      <div className="flex flex-wrap gap-3">
-        <button disabled title="سيتم التفعيل عند ربط خدمة النسخ الاحتياطي" className="btn-primary px-4 py-2.5 text-sm opacity-40 cursor-not-allowed">
-          إنشاء نسخة احتياطية الآن
-        </button>
-        <button disabled title="سيتم التفعيل عند ربط خدمة النسخ الاحتياطي" className="btn-danger-outline px-4 py-2.5 text-sm opacity-40 cursor-not-allowed">
-          استعادة نسخة احتياطية
-        </button>
-      </div>
+      {loading ? (
+        <div className="ui-skeleton h-32 rounded-lg mb-5" />
+      ) : (
+        <div className="grid md:grid-cols-2 gap-4 mb-5">
+          <div className="p-4 rounded-xl border border-[#E2E8F0]">
+            <div className="text-xs text-[#94A3B8] mb-1">آخر نسخة احتياطية</div>
+            <div className="font-bold text-[#1F2430] text-sm">
+              {status?.lastBackup ? new Date(status.lastBackup.createdAt).toLocaleString('ar-KW') : 'لا توجد نسخ سابقة'}
+            </div>
+          </div>
+          <div className="p-4 rounded-xl border border-[#E2E8F0]">
+            <div className="text-xs text-[#94A3B8] mb-1">التخزين الخارجي</div>
+            <div className={`font-bold text-sm ${status?.remoteStorageConfigured ? 'text-[var(--success)]' : 'text-[#94A3B8]'}`}>
+              {status?.remoteStorageConfigured ? 'مفعّل' : 'غير مفعّل'}
+            </div>
+          </div>
+          <div className="p-4 rounded-xl border border-[#E2E8F0]">
+            <div className="text-xs text-[#94A3B8] mb-1">عدد النسخ المحفوظة</div>
+            <div className="font-bold text-[#1F2430]">{status?.totalBackups ?? 0}</div>
+          </div>
+          <div className="p-4 rounded-xl border border-[#E2E8F0]">
+            <div className="text-xs text-[#94A3B8] mb-1">المساحة المستخدمة</div>
+            <div className="font-bold text-[#1F2430]">{status ? formatSize(status.totalSizeBytes) : '—'}</div>
+          </div>
+        </div>
+      )}
+
+      <button onClick={handleRunBackup} disabled={running} className="btn-primary px-4 py-2.5 text-sm mb-5 flex items-center gap-2">
+        {running ? <Loader2 size={16} className="animate-spin" /> : null}
+        {running ? 'جارِ إنشاء النسخة...' : 'إنشاء نسخة احتياطية الآن'}
+      </button>
+
+      <h3 className="text-sm font-bold text-[#102F63] mb-3">النسخ المتاحة للاستعادة</h3>
+      {backups.length === 0 && !loading && <div className="ui-empty-state">لا توجد نسخ احتياطية بعد</div>}
+      {backups.length > 0 && (
+        <div className="space-y-2">
+          {backups.map((b) => (
+            <div key={b.filename} className="flex items-center justify-between p-3 rounded-lg border border-[#E2E8F0] text-sm">
+              <div>
+                <div className="text-[#1F2430]">{new Date(b.createdAt).toLocaleString('ar-KW')}</div>
+                <div className="text-xs text-[#94A3B8]">{formatSize(b.sizeBytes)} · {b.triggeredBy === 'manual' ? 'يدوي' : b.triggeredBy === 'scheduled' ? 'تلقائي' : 'نسخة أمان قبل استعادة'}{b.uploadedToRemote ? ' · مرفوعة خارجيًا' : ''}</div>
+              </div>
+              <button onClick={() => setConfirmRestore(b)} className="text-[#C4362B] hover:underline">استعادة</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmRestore && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 px-4">
+          <div className="ui-card p-6 max-w-sm w-full">
+            <h3 className="font-bold text-[#C4362B] mb-2">تأكيد الاستعادة</h3>
+            <p className="text-sm text-[#64748B] mb-5">
+              هيتم استبدال كل البيانات الحالية بنسخة {new Date(confirmRestore.createdAt).toLocaleString('ar-KW')}.
+              هنعمل نسخة أمان من الوضع الحالي تلقائيًا قبل الاستعادة، لكن العملية دي مهمة وبتغيّر بيانات حقيقية. متأكدة؟
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmRestore(null)} disabled={restoring} className="px-4 py-2 rounded-[10px] border border-[#E2E8F0] text-sm text-[#64748B]">إلغاء</button>
+              <button onClick={handleRestore} disabled={restoring} className="btn-danger-outline px-4 py-2 text-sm flex items-center gap-2">
+                {restoring ? <Loader2 size={15} className="animate-spin" /> : null}
+                {restoring ? 'جارِ الاستعادة...' : 'تأكيد الاستعادة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
