@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { setAccessToken as setInMemoryAccessToken } from '../config/auth-token';
 
 interface User {
   id: string;
@@ -40,13 +41,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const data = await response.json();
           setUser(data.user);
           setAccessToken(data.accessToken);
-          // Temporarily store in localStorage for service compatibility
-          // This should be refactored to use context-based token management
-          localStorage.setItem('accessToken', data.accessToken);
+          setInMemoryAccessToken(data.accessToken);
+        } else {
+          // Refresh failed - clear any existing auth state
+          setUser(null);
+          setAccessToken(null);
+          setInMemoryAccessToken(null);
         }
       } catch (error) {
-        // Session recovery failed - user needs to login
+        // Session recovery failed - clear any existing auth state
         console.error('Session recovery failed:', error);
+        setUser(null);
+        setAccessToken(null);
+        setInMemoryAccessToken(null);
       } finally {
         setIsLoading(false);
       }
@@ -65,18 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, rememberMe }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      const errorData = await response.json().catch(() => ({ message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' }));
+      throw new Error(errorData.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
-    // Store access token in memory only (no localStorage)
-    // Refresh token is stored as HttpOnly cookie by the server
+    const data = await response.json();
+
     setUser(data.user);
     setAccessToken(data.accessToken);
-    // Temporarily store in localStorage for service compatibility
-    localStorage.setItem('accessToken', data.accessToken);
+    setInMemoryAccessToken(data.accessToken);
   };
 
   const logout = async () => {
@@ -88,10 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       // Ignore logout errors
     } finally {
-      // Clear memory state and localStorage
       setUser(null);
       setAccessToken(null);
-      localStorage.removeItem('accessToken');
+      setInMemoryAccessToken(null);
     }
   };
 
@@ -102,18 +106,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
         throw new Error('Failed to refresh token');
       }
 
-      // Update access token in memory only
+      const data = await response.json();
+
+      // Update both access token and user data from server
       setAccessToken(data.accessToken);
-      // Temporarily store in localStorage for service compatibility
-      localStorage.setItem('accessToken', data.accessToken);
+      if (data.user) {
+        setUser(data.user);
+      }
+      setInMemoryAccessToken(data.accessToken);
     } catch (error) {
-      logout();
+      // On refresh failure, clear auth state completely
+      setUser(null);
+      setAccessToken(null);
+      setInMemoryAccessToken(null);
       throw error;
     }
   };

@@ -172,6 +172,12 @@ export class AuthService {
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
+        user: {
+          id: storedToken.user.id,
+          email: storedToken.user.email,
+          name: storedToken.user.name,
+          role: storedToken.user.role,
+        },
       };
     } catch {
       throw new UnauthorizedException('Invalid refresh token');

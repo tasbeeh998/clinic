@@ -41,6 +41,8 @@ describe('Patients Module Tests (E2E)', () => {
       });
     }
     
+    await prisma.refreshToken.deleteMany();
+    await prisma.appointment.deleteMany();
     await prisma.patient.deleteMany();
     await prisma.user.deleteMany({
       where: { email: { contains: '@test.com' } },
@@ -104,6 +106,8 @@ describe('Patients Module Tests (E2E)', () => {
       });
     }
     
+    await prisma.refreshToken.deleteMany();
+    await prisma.appointment.deleteMany();
     await prisma.patient.deleteMany();
     await prisma.user.deleteMany({
       where: { email: { contains: '@test.com' } },

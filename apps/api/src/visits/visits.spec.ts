@@ -13,7 +13,6 @@ describe('Visits Module Tests (E2E)', () => {
   let adminUserId: string;
   let receptionistUserId: string;
   let testPatientId: string;
-  let testAppointmentId: string;
   let testVisitId: string;
   let adminAccessToken: string;
   let receptionistAccessToken: string;
@@ -44,6 +43,9 @@ describe('Visits Module Tests (E2E)', () => {
       });
     }
     
+    await prisma.refreshToken.deleteMany();
+    await prisma.invoiceItem.deleteMany();
+    await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
     await prisma.appointment.deleteMany();
     await prisma.patient.deleteMany();
@@ -89,21 +91,6 @@ describe('Visits Module Tests (E2E)', () => {
     });
     testPatientId = patient.id;
 
-    // Create test appointment
-    const scheduledAt = new Date();
-    scheduledAt.setDate(scheduledAt.getDate() + 1);
-    scheduledAt.setHours(10, 0, 0, 0);
-
-    const appointment = await prisma.appointment.create({
-      data: {
-        patientId: testPatientId,
-        scheduledAt,
-        status: 'BOOKED',
-        createdById: adminUserId,
-      },
-    });
-    testAppointmentId = appointment.id;
-
     // Get tokens once for all tests
     const adminResponse = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -136,6 +123,9 @@ describe('Visits Module Tests (E2E)', () => {
       });
     }
     
+    await prisma.refreshToken.deleteMany();
+    await prisma.invoiceItem.deleteMany();
+    await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
     await prisma.appointment.deleteMany();
     await prisma.patient.deleteMany();
@@ -179,18 +169,32 @@ describe('Visits Module Tests (E2E)', () => {
     });
 
     it('should create visit linked to appointment', async () => {
+      // Create test appointment inline
+      const scheduledAt = new Date();
+      scheduledAt.setDate(scheduledAt.getDate() + 1);
+      scheduledAt.setHours(10, 0, 0, 0);
+
+      const appointment = await prisma.appointment.create({
+        data: {
+          patientId: testPatientId,
+          scheduledAt,
+          status: 'BOOKED',
+          createdById: adminUserId,
+        },
+      });
+
       const response = await request(app.getHttpServer())
         .post('/api/visits')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .send({
           patientId: testPatientId,
-          appointmentId: testAppointmentId,
+          appointmentId: appointment.id,
           type: VisitType.CHECKUP,
         })
         .expect(201);
 
       expect(response.body).toHaveProperty('id');
-      expect(response.body.appointmentId).toBe(testAppointmentId);
+      expect(response.body.appointmentId).toBe(appointment.id);
     });
 
     it('should reject visit for non-existent patient', async () => {
@@ -387,8 +391,22 @@ describe('Visits Module Tests (E2E)', () => {
     });
 
     it('should filter by appointment', async () => {
+      // Create test appointment inline
+      const scheduledAt = new Date();
+      scheduledAt.setDate(scheduledAt.getDate() + 1);
+      scheduledAt.setHours(10, 0, 0, 0);
+
+      const appointment = await prisma.appointment.create({
+        data: {
+          patientId: testPatientId,
+          scheduledAt,
+          status: 'BOOKED',
+          createdById: adminUserId,
+        },
+      });
+
       const response = await request(app.getHttpServer())
-        .get(`/api/visits?appointmentId=${testAppointmentId}`)
+        .get(`/api/visits?appointmentId=${appointment.id}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
 

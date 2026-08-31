@@ -1,6 +1,26 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export type VisitStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'VOID';
+export type PaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  total: string;
+  paid: string;
+  remaining: string;
+  paymentStatus: PaymentStatus;
+  invoiceItems: Array<{ serviceNameSnapshot: string }>;
+}
+
+export function currentInvoice(invoices?: Invoice[]): Invoice | undefined {
+  return invoices?.find((invoice) => invoice.status === 'ISSUED')
+    ?? invoices?.find((invoice) => invoice.status === 'DRAFT');
+}
 
 export interface Visit {
   id: string;
@@ -29,16 +49,7 @@ export interface Visit {
     id: string;
     name: string;
   };
-  invoice?: {
-    id: string;
-    invoiceNumber: string;
-    status: 'DRAFT' | 'ISSUED' | 'VOID';
-    total: string;
-    paid: string;
-    remaining: string;
-    paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
-    invoiceItems: Array<{ serviceNameSnapshot: string }>;
-  } | null;
+  invoices?: Invoice[];
 }
 
 export interface CreateVisitDto {
@@ -78,7 +89,7 @@ export interface TodayVisitCounts {
 
 class VisitsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),

@@ -71,7 +71,10 @@ export class AuthController {
 
     res.cookie('refreshToken', result.refreshToken, cookieOptions);
 
-    return { accessToken: result.accessToken };
+    return { 
+      accessToken: result.accessToken,
+      user: result.user,
+    };
   }
 
   @Post('logout')

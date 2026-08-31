@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavigateFunction, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Eye, ReceiptText, CheckCircle2, Plus } from 'lucide-react';
-import { visitsService, VisitStatus } from '../services/visits.service';
+import { currentInvoice, visitsService, Visit, VisitStatus } from '../services/visits.service';
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   SCHEDULED: 'قيد الانتظار',
@@ -176,43 +176,7 @@ export default function VisitsList() {
             </thead>
             <tbody>
               {visits.map((visit) => (
-                <tr key={visit.id}>
-                  <td className="text-[#64748B]">
-                    {formatTime(visit.visitDate)}
-                    <div className="text-xs text-[#94A3B8]">{formatDate(visit.visitDate)}</div>
-                  </td>
-                  <td className="font-medium text-[#1F2430]">{visit.patient.fullNameAr}</td>
-                  <td className="font-mono text-[#64748B]">{visit.patient.civilId[0]}{'X'.repeat(Math.max(0, visit.patient.civilId.length - 2))}{visit.patient.civilId.slice(-1)}</td>
-                  <td className="text-[#1F2430]">{TYPE_LABELS[visit.type]}</td>
-                  <td className="text-[#64748B] text-sm">
-                    {visit.invoice?.invoiceItems.length
-                      ? visit.invoice.invoiceItems.map((i) => i.serviceNameSnapshot).join('، ')
-                      : '—'}
-                  </td>
-                  <td className="text-[#64748B]">{visit.invoice?.invoiceNumber || '—'}</td>
-                  <td>
-                    <span className="ui-badge" style={statusBadgeStyle(visit.status)}>
-                      {STATUS_LABELS[visit.status]}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => navigate(`/visits/${visit.id}`)} aria-label="عرض تفاصيل الزيارة" className="icon-btn">
-                        <Eye size={16} strokeWidth={1.75} />
-                      </button>
-                      {visit.invoice && (
-                        <button onClick={() => navigate(`/invoices/${visit.invoice!.id}`)} aria-label="عرض الفاتورة" className="icon-btn">
-                          <ReceiptText size={16} strokeWidth={1.75} />
-                        </button>
-                      )}
-                      {(visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS') && (
-                        <button onClick={() => handleComplete(visit.id)} aria-label="إنهاء الزيارة" className="icon-btn">
-                          <CheckCircle2 size={16} strokeWidth={1.75} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                <VisitRow key={visit.id} visit={visit} navigate={navigate} handleComplete={handleComplete} />
               ))}
             </tbody>
           </table>
@@ -238,5 +202,25 @@ export default function VisitsList() {
         </div>
       )}
     </div>
+  );
+}
+
+function VisitRow({ visit, navigate, handleComplete }: { visit: Visit; navigate: NavigateFunction; handleComplete: (id: string) => Promise<void> }) {
+  const invoice = currentInvoice(visit.invoices);
+  return (
+    <tr>
+      <td className="text-[#64748B]">{formatTime(visit.visitDate)}<div className="text-xs text-[#94A3B8]">{formatDate(visit.visitDate)}</div></td>
+      <td className="font-medium text-[#1F2430]">{visit.patient.fullNameAr}</td>
+      <td className="font-mono text-[#64748B]">{visit.patient.civilId[0]}{'X'.repeat(Math.max(0, visit.patient.civilId.length - 2))}{visit.patient.civilId.slice(-1)}</td>
+      <td className="text-[#1F2430]">{TYPE_LABELS[visit.type]}</td>
+      <td className="text-[#64748B] text-sm">{invoice?.invoiceItems.map((item) => item.serviceNameSnapshot).join('، ') ?? '—'}</td>
+      <td className="text-[#64748B]">{invoice?.invoiceNumber ?? '—'}</td>
+      <td><span className="ui-badge" style={statusBadgeStyle(visit.status)}>{STATUS_LABELS[visit.status]}</span></td>
+      <td><div className="flex items-center gap-1.5">
+        <button onClick={() => navigate(`/visits/${visit.id}`)} aria-label="عرض تفاصيل الزيارة" className="icon-btn"><Eye size={16} strokeWidth={1.75} /></button>
+        {invoice && <button onClick={() => navigate(`/invoices/${invoice.id}`)} aria-label="عرض الفاتورة" className="icon-btn"><ReceiptText size={16} strokeWidth={1.75} /></button>}
+        {(visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS') && <button onClick={() => handleComplete(visit.id)} aria-label="إنهاء الزيارة" className="icon-btn"><CheckCircle2 size={16} strokeWidth={1.75} /></button>}
+      </div></td>
+    </tr>
   );
 }

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { InvoiceStatus, UserRole, Prisma } from '@prisma/client';
+import { InvoiceStatus, UserRole, Prisma, InvoicePaymentStatus } from '@prisma/client';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { AddChargeDto } from './dto/add-charge.dto';
@@ -77,7 +77,10 @@ export class InvoicesService {
   async create(createInvoiceDto: CreateInvoiceDto, userId: string, ipAddress?: string, userAgent?: string) {
     // Use transaction for atomic invoice creation with audit logging
     return this.prisma.$transaction(async (tx) => {
-      // Validate visit exists
+      // Lock the visit row to prevent concurrent invoice creation using SELECT ... FOR UPDATE
+      await tx.$queryRaw`SELECT * FROM "Visit" WHERE id = ${createInvoiceDto.visitId}::uuid FOR UPDATE`;
+      
+      // Re-read the visit after locking to get the actual data
       const visit = await tx.visit.findUnique({
         where: { id: createInvoiceDto.visitId },
       });
@@ -86,14 +89,17 @@ export class InvoicesService {
         throw new NotFoundException('Visit not found');
       }
 
-      // Allow multiple invoices per visit for replacement workflow
-      // Only check for existing DRAFT invoices to prevent duplicates
-      const existingDraftInvoice = await tx.invoice.findFirst({
-        where: { visitId: createInvoiceDto.visitId, status: 'DRAFT' },
+      // Check for existing active invoices (DRAFT or ISSUED) for this visit
+      // Historical VOID invoices are allowed to coexist
+      const existingActiveInvoice = await tx.invoice.findFirst({
+        where: { 
+          visitId: createInvoiceDto.visitId, 
+          status: { in: ['DRAFT', 'ISSUED'] }
+        },
       });
 
-      if (existingDraftInvoice) {
-        throw new ConflictException('This visit already has a draft invoice');
+      if (existingActiveInvoice) {
+        throw new ConflictException('This visit already has an active invoice');
       }
 
       // Validate and price every requested service, snapshotting name + price
@@ -267,6 +273,8 @@ export class InvoicesService {
 
     // Use transaction for atomic status change and number assignment
     return this.prisma.$transaction(async (tx) => {
+      // The state check and sequence allocation must be serialized on this row.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${id}::uuid FOR UPDATE`;
       const invoice = await tx.invoice.findUnique({
         where: { id },
         include: INVOICE_ITEM_INCLUDE,
@@ -277,6 +285,11 @@ export class InvoicesService {
       }
 
       this.validateStatusTransition(invoice.status, updateStatusDto.status);
+
+      // Prevent re-issuance of already finalized invoices
+      if (invoice.status === 'ISSUED' && updateStatusDto.status === 'ISSUED') {
+        throw new BadRequestException('Invoice is already issued and cannot be re-issued');
+      }
 
       const data: { status: InvoiceStatus; issuedAt?: Date; issuedById?: string; invoiceNumber?: string } = {
         status: updateStatusDto.status,
@@ -322,6 +335,10 @@ export class InvoicesService {
 
     // Use transaction to ensure atomic charge addition with audit logging
     return this.prisma.$transaction(async (tx) => {
+      // Lock the invoice row FIRST to prevent concurrent modifications
+      await tx.$queryRaw`SELECT * FROM "Invoice" WHERE id = ${invoiceId}::uuid FOR UPDATE`;
+      
+      // Re-read invoice with authoritative state after lock
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
         include: INVOICE_ITEM_INCLUDE,
@@ -336,6 +353,7 @@ export class InvoicesService {
         throw new BadRequestException('Additional charges can only be added to draft invoices');
       }
 
+      // Calculate charge based on fresh invoice state
       const chargeValue = new Decimal(addChargeDto.chargeValue);
       let calculatedAmount: Decimal;
       
@@ -358,7 +376,7 @@ export class InvoicesService {
         },
       });
 
-      // Recalculate invoice total
+      // Recalculate invoice total from authoritative stored charges in same transaction
       const allCharges = await tx.invoiceAdditionalCharge.findMany({
         where: { invoiceId },
       });
@@ -367,12 +385,21 @@ export class InvoicesService {
       const newTotal = invoice.subtotal.add(totalCharges).toDecimalPlaces(2);
       const newRemaining = newTotal.sub(invoice.paid).toDecimalPlaces(2);
 
+      // Recalculate payment status based on new total and existing paid amount
+      let newPaymentStatus: InvoicePaymentStatus = 'UNPAID';
+      if (newRemaining.equals(0)) {
+        newPaymentStatus = 'PAID';
+      } else if (newRemaining.lessThan(newTotal)) {
+        newPaymentStatus = 'PARTIALLY_PAID';
+      }
+
       // Update invoice
       const updated = await tx.invoice.update({
         where: { id: invoiceId },
         data: {
           total: newTotal,
           remaining: newRemaining,
+          paymentStatus: newPaymentStatus,
         },
         include: INVOICE_ITEM_INCLUDE,
       });
@@ -407,6 +434,12 @@ export class InvoicesService {
 
     // Use transaction for the complete replacement workflow with atomic number generation
     return this.prisma.$transaction(async (tx) => {
+      // Serialize payment, reversal, and replacement against the original before
+      // reading any financial or replacement state.
+      await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${originalInvoiceId}::uuid FOR UPDATE`;
+
+      // This is the authoritative post-lock snapshot. Never use a pre-lock
+      // financial read to build a replacement.
       const originalInvoice = await tx.invoice.findUnique({
         where: { id: originalInvoiceId },
         include: {
@@ -419,7 +452,11 @@ export class InvoicesService {
         throw new NotFoundException('Original invoice not found');
       }
 
-      // Only issued invoices can be replaced
+      if (originalInvoice.replacedByInvoiceId) {
+        throw new ConflictException('This invoice already has a replacement');
+      }
+
+      // Only issued invoices can be replaced.
       if (originalInvoice.status !== 'ISSUED') {
         throw new BadRequestException('Only issued invoices can be replaced');
       }
@@ -493,8 +530,65 @@ export class InvoicesService {
       const totalCharges = additionalChargesData.reduce((sum, charge) => sum.add(charge.calculatedAmount), new Decimal(0)).toDecimalPlaces(2);
       const total = subtotal.add(totalCharges).toDecimalPlaces(2);
       
+      // For payment credit, we need to handle two cases:
+      // 1. Original invoice has direct payments (no allocations) - create allocations from them
+      // 2. Original invoice has allocations (it's a replacement) - copy those allocations
+      const sourceAllocations = await tx.paymentAllocation.findMany({
+        where: { invoiceId: originalInvoiceId },
+        include: {
+          payment: {
+            select: { id: true, amount: true, status: true },
+          },
+        },
+      });
+      
+      let validAllocations: Array<{ paymentId: string; amount: Decimal }> = [];
+      
+      // If there are allocations, this is a replacement invoice - copy those allocations
+      if (sourceAllocations.length > 0) {
+        validAllocations = sourceAllocations
+          .filter(allocation => allocation.payment.status === 'RECORDED')
+          .map(allocation => ({
+            paymentId: allocation.paymentId,
+            amount: allocation.amount,
+          }));
+      } else {
+        // If there are no allocations, this is the original invoice with direct payments
+        // We need to create allocations from the direct payments
+        const directPayments = await tx.payment.findMany({
+          where: { invoiceId: originalInvoiceId, status: 'RECORDED' },
+          orderBy: [{ paymentDate: 'asc' }, { id: 'asc' }],
+          select: { id: true, amount: true },
+        });
+        
+        let allocatable = total;
+        validAllocations = directPayments.flatMap((payment) => {
+          const amount = Decimal.min(payment.amount, allocatable).toDecimalPlaces(2);
+          allocatable = allocatable.sub(amount);
+          return amount.gt(0) ? [{ paymentId: payment.id, amount }] : [];
+        });
+      }
+      
+      // Calculate the total credit from allocations
+      const replacementPaid = validAllocations.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0)).toDecimalPlaces(2);
+      const replacementRemaining = total.sub(replacementPaid).toDecimalPlaces(2);
+      
+      // Determine payment status based on remaining balance
+      let replacementPaymentStatus: InvoicePaymentStatus = 'UNPAID';
+      if (replacementRemaining.equals(0)) {
+        replacementPaymentStatus = 'PAID';
+      } else if (replacementRemaining.lessThan(total)) {
+        replacementPaymentStatus = 'PARTIALLY_PAID';
+      }
+      
       // Replacement invoices start as DRAFT with temporary number
       const replacementInvoiceNumber = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+      // Create payment allocations for the replacement invoice
+      const allocationData = validAllocations.map(allocation => ({
+        paymentId: allocation.paymentId,
+        amount: allocation.amount,
+      }));
 
       // Create replacement invoice
       const replacementInvoice = await tx.invoice.create({
@@ -505,9 +599,9 @@ export class InvoicesService {
           status: 'DRAFT', // Start as draft, can be issued later
           subtotal,
           total,
-          paid: 0,
-          remaining: total,
-          paymentStatus: 'UNPAID',
+          paid: replacementPaid,
+          remaining: replacementRemaining,
+          paymentStatus: replacementPaymentStatus,
           createdById: userId,
           invoiceItems: {
             create: invoiceItemsData,
@@ -515,6 +609,9 @@ export class InvoicesService {
           additionalCharges: {
             create: additionalChargesData,
           },
+          paymentAllocations: allocationData.length > 0 ? {
+            create: allocationData,
+          } : undefined,
         },
         include: INVOICE_ITEM_INCLUDE,
       });
