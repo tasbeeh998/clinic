@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -12,14 +13,16 @@ import { ServicesModule } from './services/services.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReportsModule } from './reports/reports.module';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
       validate: (config) => {
-        const requiredEnvVars = ['NODE_ENV', 'PORT', 'DATABASE_URL'];
+        const requiredEnvVars = ['NODE_ENV', 'PORT', 'DATABASE_URL', 'POSTGRES_DB'];
         const missingEnvVars = requiredEnvVars.filter((envVar) => !config[envVar]);
 
         if (missingEnvVars.length > 0) {
@@ -51,6 +54,7 @@ import { ReportsModule } from './reports/reports.module';
     InvoicesModule,
     PaymentsModule,
     ReportsModule,
+    BackupModule,
   ],
 })
 export class AppModule {}
