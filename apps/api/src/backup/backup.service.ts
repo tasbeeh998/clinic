@@ -27,7 +27,7 @@ export class BackupService implements OnModuleInit {
   private operationInProgress = false;
   private operationQueue: Array<() => Promise<unknown>> = [];
 
-  constructor(private auditService: AuditService) {}
+  constructor(private auditService: AuditService) { }
 
   private async withOperationLock<T>(operation: () => Promise<T>): Promise<T> {
     // Wait for current operation to complete
@@ -203,7 +203,7 @@ export class BackupService implements OnModuleInit {
       await this.pruneOldBackups();
 
       if (userId) {
-        await this.auditService.logUserAction(userId, 'BACKUP_CREATED', 'System', filename, ipAddress, userAgent);
+        await this.auditService.logUserAction(userId, 'BACKUP_CREATED', 'System', userId, ipAddress, userAgent);
       }
 
       return { filename, sizeBytes: stat.size, createdAt: new Date().toISOString(), triggeredBy, uploadedToRemote };
@@ -328,7 +328,7 @@ export class BackupService implements OnModuleInit {
         throw new InternalServerErrorException(`Restore failed: ${err.message}`);
       });
 
-      await this.auditService.logUserAction(userId, 'RESTORE_EXECUTED', 'System', filename, ipAddress, userAgent);
+      await this.auditService.logUserAction(userId, 'RESTORE_EXECUTED', 'System', userId, ipAddress, userAgent);
 
       return { restored: filename, restoredAt: new Date().toISOString() };
     });
@@ -381,3 +381,4 @@ export class BackupService implements OnModuleInit {
     );
   }
 }
+

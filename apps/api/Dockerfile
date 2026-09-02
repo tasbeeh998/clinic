@@ -11,6 +11,19 @@ RUN apt-get update && apt-get install -y wget gnupg lsb-release ca-certificates 
     apt-get update && apt-get install -y postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
+# System Chromium + Arabic-capable fonts for Puppeteer (invoice PDF generation).
+# Using the distro's Chromium avoids Puppeteer's own ~200MB browser download.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    fonts-noto \
+    fonts-noto-core \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 COPY package*.json ./
 COPY tsconfig*.json ./
 COPY nest-cli.json ./
@@ -21,11 +34,14 @@ RUN npm install
 
 COPY src ./src
 COPY prisma ./prisma
-RUN ls -la /app/prisma/migrations/
 
 RUN npm run prisma:generate
 RUN npm run build
 
 EXPOSE 3001
 
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+
+
+
+

@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Cairo font is already loaded via <link> in index.html — no @import needed here. */
+
 :root {
   --brand-navy: #102f63;
   --brand-navy-dark: #0b2450;

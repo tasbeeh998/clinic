@@ -4,8 +4,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { visitsService, CreateVisitDto } from '../services/visits.service';
 import { patientsService } from '../services/patients.service';
 import { appointmentsService } from '../services/appointments.service';
+import { useTranslation } from 'react-i18next';
 
 export default function VisitForm() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const prefillPatientId = searchParams.get('patientId') || '';
@@ -53,7 +55,7 @@ export default function VisitForm() {
       navigate(`/patients/${data.patientId}`);
     },
     onError: (error: Error) => {
-      setErrors({ general: error.message || 'فشل في إنشاء الزيارة' });
+      setErrors({ general: error.message || t('visits.createError') });
     },
   });
 
@@ -61,22 +63,22 @@ export default function VisitForm() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.patientId) {
-      newErrors.patientId = 'المريض مطلوب';
+      newErrors.patientId = t('visits.patientRequired');
     }
 
     if (!formData.type) {
-      newErrors.type = 'نوع الزيارة مطلوب';
+      newErrors.type = t('visits.typeRequired');
     }
 
     if (formData.visitDate) {
       const visitDate = new Date(formData.visitDate);
       if (isNaN(visitDate.getTime())) {
-        newErrors.visitDate = 'تاريخ ووقت غير صالح';
+        newErrors.visitDate = t('visits.invalidDateTime');
       }
     }
 
     if (formData.notes && formData.notes.length > 1000) {
-      newErrors.notes = 'الملاحظات يجب أن لا تتجاوز 1000 حرف';
+      newErrors.notes = t('visits.notesTooLong');
     }
 
     setErrors(newErrors);
@@ -108,16 +110,16 @@ export default function VisitForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">زيارة جديدة</h1>
+          <h1 className="text-3xl font-bold text-[#111844]">{t('visits.newVisit')}</h1>
           <button
             onClick={handleCancel}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
           >
-            إلغاء
+            {t('common.cancel')}
           </button>
         </div>
 
@@ -133,7 +135,7 @@ export default function VisitForm() {
             {/* Patient Selection */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                المريض <span className="text-red-500">*</span>
+                {t('visits.patient')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -143,7 +145,7 @@ export default function VisitForm() {
                   setShowPatientDropdown(true);
                 }}
                 onFocus={() => setShowPatientDropdown(true)}
-                placeholder="ابحث بالاسم أو الرقم المدني أو الهاتف..."
+                placeholder={t('visits.patientSearchPlaceholder')}
                 className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
                   errors.patientId ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -176,7 +178,7 @@ export default function VisitForm() {
             {/* Visit Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                نوع الزيارة <span className="text-red-500">*</span>
+                {t('visits.type')} <span className="text-red-500">*</span>
               </label>
               <select
                 value={formData.type}
@@ -185,9 +187,9 @@ export default function VisitForm() {
                   errors.type ? 'border-red-500' : 'border-gray-300'
                 }`}
               >
-                <option value="CHECKUP">كشف</option>
-                <option value="FOLLOW_UP">متابعة</option>
-                <option value="OTHER">أخرى</option>
+                <option value="CHECKUP">{t('visits.typeCheckup')}</option>
+                <option value="FOLLOW_UP">{t('visits.typeFollowUp')}</option>
+                <option value="OTHER">{t('visits.typeOther')}</option>
               </select>
               {errors.type && (
                 <p className="mt-1 text-sm text-red-600">{errors.type}</p>
@@ -197,7 +199,7 @@ export default function VisitForm() {
             {/* Date and Time */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                التاريخ والوقت
+                {t('visits.dateTimeLabel')}
               </label>
               <input
                 type="datetime-local"
@@ -215,24 +217,24 @@ export default function VisitForm() {
             {/* Linked Appointment */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                الموعد المرتبط (اختياري)
+                {t('visits.linkedAppointment')}
               </label>
               <input
                 type="text"
-                value={prefillAppointmentId ? 'موعد مرتبط' : ''}
+                value={prefillAppointmentId ? t('visits.linkedAppointmentValue') : ''}
                 disabled={!!prefillAppointmentId}
-                placeholder="معرف الموعد (اختياري)"
+                placeholder={t('visits.appointmentIdPlaceholder')}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 focus:outline-none"
               />
               {prefillAppointmentId && (
-                <p className="mt-1 text-sm text-gray-500">تم ربط الموعد تلقائيًا</p>
+                <p className="mt-1 text-sm text-gray-500">{t('visits.appointmentAutoLinked')}</p>
               )}
             </div>
 
             {/* Diagnosis */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                التشخيص
+                {t('visits.diagnosisLabel')}
               </label>
               <input
                 type="text"
@@ -240,14 +242,14 @@ export default function VisitForm() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, diagnosis: e.target.value }))}
                 maxLength={500}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
-                placeholder="التشخيص (يظهر في فاتورة الزيارة)"
+                placeholder={t('visits.diagnosisPlaceholder')}
               />
             </div>
 
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                ملاحظات
+                {t('visits.notesLabel')}
               </label>
               <textarea
                 value={formData.notes}
@@ -257,7 +259,7 @@ export default function VisitForm() {
                 className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
                   errors.notes ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="أضف ملاحظات إدارية اختيارية..."
+                placeholder={t('visits.notesPlaceholder')}
               />
               {errors.notes && (
                 <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
@@ -271,14 +273,14 @@ export default function VisitForm() {
                 onClick={handleCancel}
                 className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={createMutation.isPending}
                 className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {createMutation.isPending ? 'جاري الحفظ...' : 'حفظ الزيارة'}
+                {createMutation.isPending ? t('common.saving') : t('visits.saveVisit')}
               </button>
             </div>
           </form>

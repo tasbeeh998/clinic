@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { appointmentsService, CreateAppointmentDto } from '../services/appointments.service';
 import { patientsService } from '../services/patients.service';
+import { useTranslation } from 'react-i18next';
 
 export default function AppointmentForm() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<CreateAppointmentDto>({
     patientId: '',
@@ -30,7 +32,7 @@ export default function AppointmentForm() {
       navigate(`/appointments/${data.id}`);
     },
     onError: (error: Error) => {
-      setErrors({ general: error.message || 'فشل في إنشاء الموعد' });
+      setErrors({ general: error.message || t('appointments.createError') });
     },
   });
 
@@ -38,20 +40,20 @@ export default function AppointmentForm() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.patientId) {
-      newErrors.patientId = 'المريض مطلوب';
+      newErrors.patientId = t('visits.patientRequired');
     }
 
     if (!formData.scheduledAt) {
-      newErrors.scheduledAt = 'تاريخ ووقت الموعد مطلوب';
+      newErrors.scheduledAt = t('appointments.dateTimeRequired');
     } else {
       const scheduledDate = new Date(formData.scheduledAt);
       if (isNaN(scheduledDate.getTime())) {
-        newErrors.scheduledAt = 'تاريخ ووقت غير صالح';
+        newErrors.scheduledAt = t('visits.invalidDateTime');
       }
     }
 
     if (formData.notes && formData.notes.length > 1000) {
-      newErrors.notes = 'الملاحظات يجب أن لا تتجاوز 1000 حرف';
+      newErrors.notes = t('visits.notesTooLong');
     }
 
     setErrors(newErrors);
@@ -79,16 +81,16 @@ export default function AppointmentForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">موعد جديد</h1>
+          <h1 className="text-3xl font-bold text-[#111844]">{t('appointments.newAppointment')}</h1>
           <button
             onClick={handleCancel}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
           >
-            إلغاء
+            {t('common.cancel')}
           </button>
         </div>
 
@@ -104,7 +106,7 @@ export default function AppointmentForm() {
             {/* Patient Selection */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                المريض <span className="text-red-500">*</span>
+                {t('visits.patient')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -114,7 +116,7 @@ export default function AppointmentForm() {
                   setShowPatientDropdown(true);
                 }}
                 onFocus={() => setShowPatientDropdown(true)}
-                placeholder="ابحث بالاسم أو الرقم المدني أو الهاتف..."
+                placeholder={t('visits.patientSearchPlaceholder')}
                 className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
                   errors.patientId ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -147,7 +149,7 @@ export default function AppointmentForm() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  التاريخ <span className="text-red-500">*</span>
+                  {t('common.date')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -163,7 +165,7 @@ export default function AppointmentForm() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  الوقت <span className="text-red-500">*</span>
+                  {t('visits.time')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="time"
@@ -185,7 +187,7 @@ export default function AppointmentForm() {
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                ملاحظات
+                {t('visits.notesLabel')}
               </label>
               <textarea
                 value={formData.notes}
@@ -195,7 +197,7 @@ export default function AppointmentForm() {
                 className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
                   errors.notes ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="أضف ملاحظات اختيارية..."
+                placeholder={t('appointments.notesPlaceholder')}
               />
               {errors.notes && (
                 <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
@@ -209,14 +211,14 @@ export default function AppointmentForm() {
                 onClick={handleCancel}
                 className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={createMutation.isPending}
                 className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {createMutation.isPending ? 'جاري الحجز...' : 'حجز الموعد'}
+                {createMutation.isPending ? t('appointments.booking') : t('appointments.bookAppointment')}
               </button>
             </div>
           </form>

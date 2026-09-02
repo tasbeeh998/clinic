@@ -1,42 +1,41 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, User, Phone, IdCard, Calendar, Stethoscope, FileText, ReceiptText } from 'lucide-react';
-import { visitsService, VisitStatus, currentInvoice } from '../services/visits.service';
-
-const STATUS_LABELS: Record<VisitStatus, string> = {
-  SCHEDULED: 'قيد الانتظار',
-  IN_PROGRESS: 'جارية الآن',
-  COMPLETED: 'مكتملة',
-  CANCELLED: 'ملغاة',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  CHECKUP: 'كشف',
-  FOLLOW_UP: 'متابعة',
-  OTHER: 'أخرى',
-};
-
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  UNPAID: 'غير مدفوعة',
-  PARTIALLY_PAID: 'مدفوعة جزئيًا',
-  PAID: 'مدفوعة بالكامل',
-};
-
-function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('ar-KW', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
-}
+import { visitsService, VisitStatus } from '../services/visits.service';
+import { useTranslation } from 'react-i18next';
+import { formatDateTime } from '../utils/dateFormat';
 
 export default function VisitDetail() {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  const STATUS_LABELS: Record<VisitStatus, string> = {
+    SCHEDULED: t('visits.statusScheduled'),
+    IN_PROGRESS: t('visits.statusInProgress'),
+    COMPLETED: t('visits.statusCompleted'),
+    CANCELLED: t('visits.statusCancelled'),
+  };
+  const TYPE_LABELS: Record<string, string> = {
+    CHECKUP: t('visits.typeCheckup'),
+    FOLLOW_UP: t('visits.typeFollowUp'),
+    OTHER: t('visits.typeOther'),
+  };
+  const PAYMENT_STATUS_LABELS: Record<string, string> = {
+    UNPAID: t('invoices.unpaid'),
+    PARTIALLY_PAID: t('invoices.partiallyPaid'),
+    PAID: t('invoices.paidInFull'),
+  };
 
   const { data: visit, isLoading, error } = useQuery({
     queryKey: ['visit', id],
     queryFn: () => visitsService.getVisit(id!),
     enabled: !!id,
   });
+
+  // A visit can have at most one invoice (enforced by the backend), but the
+  // API returns it as an array (`invoices`), not a single `invoice` field.
+  const invoice = visit?.invoices?.[0];
 
   if (isLoading) {
     return (
@@ -51,24 +50,22 @@ export default function VisitDetail() {
   if (error || !visit) {
     return (
       <div className="page-container">
-        <div className="ui-card p-16 text-center text-[#C4362B]">تعذّر تحميل بيانات الزيارة</div>
+        <div className="ui-card p-16 text-center text-[#C4362B]">{t('visits.detailLoadError')}</div>
       </div>
     );
   }
-
-  const activeInvoice = currentInvoice(visit.invoices);
 
   return (
     <div className="page-container">
       <button onClick={() => navigate('/visits')} className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#102F63] mb-4">
         <ArrowRight size={16} strokeWidth={1.75} />
-        رجوع للزيارات
+        {t('visits.backToVisits')}
       </button>
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[22px] font-bold text-[#102F63]">تفاصيل الزيارة</h1>
-          <p className="text-sm text-[#64748B] mt-1">{formatDateTime(visit.visitDate)}</p>
+          <h1 className="text-[22px] font-bold text-[#102F63]">{t('visits.detailsTitle')}</h1>
+          <p className="text-sm text-[#64748B] mt-1">{formatDateTime(visit.visitDate, i18n.language)}</p>
         </div>
         <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.1)', color: 'var(--brand-blue)' }}>
           {STATUS_LABELS[visit.status]}
@@ -79,22 +76,22 @@ export default function VisitDetail() {
         <div className="ui-card p-5">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4 flex items-center gap-2">
             <User size={17} strokeWidth={1.75} />
-            بيانات المريضة
+            {t('visits.patientInfo')}
           </h2>
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
               <User size={15} strokeWidth={1.75} className="text-[#94A3B8]" />
-              <span className="text-[#64748B]">الاسم:</span>
+              <span className="text-[#64748B]">{t('visits.nameLabel')}</span>
               <span className="font-medium text-[#1F2430]">{visit.patient.fullNameAr}</span>
             </div>
             <div className="flex items-center gap-2">
               <IdCard size={15} strokeWidth={1.75} className="text-[#94A3B8]" />
-              <span className="text-[#64748B]">الرقم المدني:</span>
+              <span className="text-[#64748B]">{t('patients.civilId')}:</span>
               <span className="font-medium text-[#1F2430] font-mono">{visit.patient.civilId}</span>
             </div>
             <div className="flex items-center gap-2">
               <Phone size={15} strokeWidth={1.75} className="text-[#94A3B8]" />
-              <span className="text-[#64748B]">الموبايل:</span>
+              <span className="text-[#64748B]">{t('visits.mobileLabel')}</span>
               <span className="font-medium text-[#1F2430]">{visit.patient.phone || '—'}</span>
             </div>
           </div>
@@ -103,26 +100,26 @@ export default function VisitDetail() {
         <div className="ui-card p-5">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4 flex items-center gap-2">
             <Calendar size={17} strokeWidth={1.75} />
-            بيانات الزيارة
+            {t('visits.visitInfo')}
           </h2>
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
-              <span className="text-[#64748B]">التاريخ والوقت:</span>
-              <span className="font-medium text-[#1F2430]">{formatDateTime(visit.visitDate)}</span>
+              <span className="text-[#64748B]">{t('visits.dateTimeLabel')}</span>
+              <span className="font-medium text-[#1F2430]">{formatDateTime(visit.visitDate, i18n.language)}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[#64748B]">نوع الزيارة:</span>
+              <span className="text-[#64748B]">{t('visits.type')}:</span>
               <span className="font-medium text-[#1F2430]">{TYPE_LABELS[visit.type]}</span>
             </div>
             {visit.diagnosis && (
               <div className="flex items-start gap-2">
-                <span className="text-[#64748B] shrink-0">التشخيص:</span>
+                <span className="text-[#64748B] shrink-0">{t('visits.diagnosisLabel')}</span>
                 <span className="font-medium text-[#1F2430]">{visit.diagnosis}</span>
               </div>
             )}
             {visit.notes && (
               <div className="flex items-start gap-2">
-                <span className="text-[#64748B] shrink-0">ملاحظات:</span>
+                <span className="text-[#64748B] shrink-0">{t('visits.notesLabel')}</span>
                 <span className="text-[#1F2430]">{visit.notes}</span>
               </div>
             )}
@@ -133,65 +130,63 @@ export default function VisitDetail() {
       <div className="ui-card p-5 mb-5">
         <h2 className="text-[15px] font-bold text-[#102F63] mb-4 flex items-center gap-2">
           <Stethoscope size={17} strokeWidth={1.75} />
-          الخدمات
+          {t('visits.services')}
         </h2>
-        {activeInvoice ? (
+        {invoice && invoice.invoiceItems.length > 0 ? (
           <ul className="space-y-2">
-            {activeInvoice.invoiceItems.map((item, i: number) => (
-                  <li key={i} className="text-sm text-[#1F2430] flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#102F63]" />
-                    {item.serviceNameSnapshot}
-                  </li>
-                ))}
+            {invoice.invoiceItems.map((item, i) => (
+              <li key={i} className="text-sm text-[#1F2430] flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#102F63]" />
+                {item.serviceNameSnapshot}
+              </li>
+            ))}
           </ul>
         ) : (
-          <p className="text-sm text-[#94A3B8]">لا توجد خدمات مسجلة بعد لهذه الزيارة (لسه ما اتعملتش فاتورة).</p>
+          <p className="text-sm text-[#94A3B8]">{t('visits.noServicesYet')}</p>
         )}
       </div>
 
       <div className="ui-card p-5">
         <h2 className="text-[15px] font-bold text-[#102F63] mb-4 flex items-center gap-2">
           <FileText size={17} strokeWidth={1.75} />
-          الفاتورة
+          {t('sidebar.invoices')}
         </h2>
-        {activeInvoice ? (
+        {invoice ? (
           <>
-                <div key={activeInvoice.id}>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
-                    <div>
-                      <div className="text-[#94A3B8] text-xs mb-1">رقم الفاتورة</div>
-                      <div className="font-medium text-[#1F2430]">{activeInvoice.invoiceNumber}</div>
-                    </div>
-                    <div>
-                      <div className="text-[#94A3B8] text-xs mb-1">الإجمالي</div>
-                      <div className="font-medium text-[#1F2430]">{parseFloat(activeInvoice.total).toFixed(2)} د.ك</div>
-                    </div>
-                    <div>
-                      <div className="text-[#94A3B8] text-xs mb-1">المدفوع</div>
-                      <div className="font-medium text-[#1F2430]">{parseFloat(activeInvoice.paid).toFixed(2)} د.ك</div>
-                    </div>
-                    <div>
-                      <div className="text-[#94A3B8] text-xs mb-1">المتبقي</div>
-                      <div className="font-medium text-[#C4362B]">{parseFloat(activeInvoice.remaining).toFixed(2)} د.ك</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.08)', color: 'var(--brand-blue)' }}>
-                      {PAYMENT_STATUS_LABELS[activeInvoice.paymentStatus]}
-                    </span>
-                    <button onClick={() => navigate(`/invoices/${activeInvoice.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
-                      <ReceiptText size={16} strokeWidth={1.75} />
-                      عرض الفاتورة
-                    </button>
-                  </div>
-                </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+              <div>
+                <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.number')}</div>
+                <div className="font-medium text-[#1F2430]">{invoice.invoiceNumber}</div>
+              </div>
+              <div>
+                <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.total')}</div>
+                <div className="font-medium text-[#1F2430]">{parseFloat(invoice.total).toFixed(2)} {t('common.currency')}</div>
+              </div>
+              <div>
+                <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.paid')}</div>
+                <div className="font-medium text-[#1F2430]">{parseFloat(invoice.paid).toFixed(2)} {t('common.currency')}</div>
+              </div>
+              <div>
+                <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.remaining')}</div>
+                <div className="font-medium text-[#C4362B]">{parseFloat(invoice.remaining).toFixed(2)} {t('common.currency')}</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.08)', color: 'var(--brand-blue)' }}>
+                {PAYMENT_STATUS_LABELS[invoice.paymentStatus]}
+              </span>
+              <button onClick={() => navigate(`/invoices/${invoice.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+                <ReceiptText size={16} strokeWidth={1.75} />
+                {t('visits.viewInvoiceBtn')}
+              </button>
+            </div>
           </>
         ) : (
           <div className="flex items-center justify-between">
-            <p className="text-sm text-[#94A3B8]">لسه معملتش فاتورة لهذه الزيارة.</p>
+            <p className="text-sm text-[#94A3B8]">{t('visits.noInvoiceYet')}</p>
             <button onClick={() => navigate(`/invoices/new?visitId=${visit.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
               <ReceiptText size={16} strokeWidth={1.75} />
-              إنشاء فاتورة
+              {t('visits.createInvoiceBtn')}
             </button>
           </div>
         )}

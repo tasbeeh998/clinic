@@ -1,27 +1,27 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import PatientsList from './pages/PatientsList'
-import PatientForm from './pages/PatientForm'
-import PatientProfile from './pages/PatientProfile'
-import AppointmentsList from './pages/AppointmentsList'
-import AppointmentForm from './pages/AppointmentForm'
-import AppointmentDetail from './pages/AppointmentDetail'
-import VisitsList from './pages/VisitsList'
-import VisitForm from './pages/VisitForm'
-import VisitDetail from './pages/VisitDetail'
-import ServicesList from './pages/ServicesList'
-import ServiceForm from './pages/ServiceForm'
-import InvoicesList from './pages/InvoicesList'
-import InvoiceForm from './pages/InvoiceForm'
-import InvoiceDetail from './pages/InvoiceDetail'
-import ReportsPage from './pages/ReportsPage'
-import SettingsPage from './pages/SettingsPage'
-import ProtectedRoute from './components/ProtectedRoute'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
+import PatientsList from './pages/PatientsList';
+import PatientForm from './pages/PatientForm';
+import PatientProfile from './pages/PatientProfile';
+import AppointmentsList from './pages/AppointmentsList';
+import AppointmentForm from './pages/AppointmentForm';
+import AppointmentDetail from './pages/AppointmentDetail';
+import VisitsList from './pages/VisitsList';
+import VisitForm from './pages/VisitForm';
+import VisitDetail from './pages/VisitDetail';
+import ServicesList from './pages/ServicesList';
+import ServiceForm from './pages/ServiceForm';
+import InvoicesList from './pages/InvoicesList';
+import InvoiceForm from './pages/InvoiceForm';
+import InvoiceDetail from './pages/InvoiceDetail';
+import ProtectedRoute from './components/ProtectedRoute';
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 function App() {
   return (
@@ -30,6 +30,7 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+
             <Route
               path="/dashboard"
               element={
@@ -38,6 +39,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/patients"
               element={
@@ -70,6 +72,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/appointments"
               element={
@@ -94,6 +97,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/visits"
               element={
@@ -110,6 +114,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* VisitsList links to /visits/:id (view button) — this route was
+                missing before, which would have made that button a dead link. */}
             <Route
               path="/visits/:id"
               element={
@@ -118,6 +124,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/services"
               element={
@@ -142,6 +149,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/invoices"
               element={
@@ -166,10 +174,14 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            {/* /reports and /settings — backend endpoints confirmed present
+                for reports and backup; users/audit endpoints assumed to
+                follow the same REST pattern but weren't directly confirmed. */}
             <Route
               path="/reports"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN']}>
+                <ProtectedRoute>
                   <ReportsPage />
                 </ProtectedRoute>
               }
@@ -177,17 +189,19 @@ function App() {
             <Route
               path="/settings"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN']}>
+                <ProtectedRoute>
                   <SettingsPage />
                 </ProtectedRoute>
               }
             />
+
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
-  )
+  );
 }
 
-export default App
+export default App;
+

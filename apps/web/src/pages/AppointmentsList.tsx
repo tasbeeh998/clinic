@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { appointmentsService, Appointment } from '../services/appointments.service';
+import { useTranslation } from 'react-i18next';
+import { formatTime as formatTimeUtil } from '../utils/dateFormat';
 
 type ViewType = 'calendar' | 'list';
 
 export default function AppointmentsList() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [viewType, setViewType] = useState<ViewType>('calendar');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -22,11 +25,11 @@ export default function AppointmentsList() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      BOOKED: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'محجوز' },
-      CONFIRMED: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'مؤكد' },
-      DONE: { bg: 'bg-green-100', text: 'text-green-700', label: 'تم' },
-      CANCELLED: { bg: 'bg-red-100', text: 'text-red-700', label: 'ملغي' },
-      NO_SHOW: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'لم يحضر' },
+      BOOKED: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('appointments.statusBooked') },
+      CONFIRMED: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: t('appointments.statusConfirmed') },
+      DONE: { bg: 'bg-green-100', text: 'text-green-700', label: t('appointments.statusDone') },
+      CANCELLED: { bg: 'bg-red-100', text: 'text-red-700', label: t('appointments.statusCancelled') },
+      NO_SHOW: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: t('appointments.statusNoShow') },
     };
 
     const config = statusConfig[status] || statusConfig.BOOKED;
@@ -51,18 +54,16 @@ export default function AppointmentsList() {
     navigate(`/appointments/${appointment.id}`);
   };
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('ar-KW', { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatTime = (dateString: string) => formatTimeUtil(dateString, i18n.language);
 
   const formatDateDisplay = (date: Date) => {
-    return date.toLocaleDateString('ar-KW', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const locale = i18n.language === 'ar' ? 'ar-KW' : 'en-GB';
+    return date.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
@@ -80,10 +81,10 @@ export default function AppointmentsList() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            فشل في تحميل بيانات المواعيد
+            {t('appointments.loadError')}
           </div>
         </div>
       </div>
@@ -100,16 +101,16 @@ export default function AppointmentsList() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">المواعيد</h1>
+          <h1 className="text-3xl font-bold text-[#111844]">{t('sidebar.appointments')}</h1>
           <button
             onClick={handleNewAppointment}
             className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors"
           >
-            + موعد جديد
+            + {t('appointments.newAppointment')}
           </button>
         </div>
 
@@ -122,7 +123,7 @@ export default function AppointmentsList() {
                 onClick={() => handleDateChange(-1)}
                 className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
               >
-                السابق
+                {t('common.previous')}
               </button>
               <span className="font-medium text-gray-900 min-w-[200px] text-center">
                 {formatDateDisplay(selectedDate)}
@@ -131,7 +132,7 @@ export default function AppointmentsList() {
                 onClick={() => handleDateChange(1)}
                 className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
               >
-                التالي
+                {t('common.next')}
               </button>
             </div>
 
@@ -145,7 +146,7 @@ export default function AppointmentsList() {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                تقويم
+                {t('appointments.calendarView')}
               </button>
               <button
                 onClick={() => setViewType('list')}
@@ -155,7 +156,7 @@ export default function AppointmentsList() {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                قائمة
+                {t('appointments.listView')}
               </button>
             </div>
 
@@ -165,12 +166,12 @@ export default function AppointmentsList() {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-1 border border-gray-300 rounded"
             >
-              <option value="">كل الحالات</option>
-              <option value="BOOKED">محجوز</option>
-              <option value="CONFIRMED">مؤكد</option>
-              <option value="DONE">تم</option>
-              <option value="CANCELLED">ملغي</option>
-              <option value="NO_SHOW">لم يحضر</option>
+              <option value="">{t('common.allStatuses')}</option>
+              <option value="BOOKED">{t('appointments.statusBooked')}</option>
+              <option value="CONFIRMED">{t('appointments.statusConfirmed')}</option>
+              <option value="DONE">{t('appointments.statusDone')}</option>
+              <option value="CANCELLED">{t('appointments.statusCancelled')}</option>
+              <option value="NO_SHOW">{t('appointments.statusNoShow')}</option>
             </select>
           </div>
         </div>
@@ -207,7 +208,7 @@ export default function AppointmentsList() {
                           </div>
                         ))
                       ) : (
-                        <div className="text-gray-400 text-sm">— متاح —</div>
+                        <div className="text-gray-400 text-sm">{t('appointments.slotAvailable')}</div>
                       )}
                     </div>
                   </div>
@@ -222,16 +223,16 @@ export default function AppointmentsList() {
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             {appointments.length === 0 ? (
               <div className="p-12 text-center text-gray-500">
-                لا توجد مواعيد في هذا اليوم
+                {t('appointments.noAppointmentsToday')}
               </div>
             ) : (
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الوقت</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">المريض</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الرقم المدني</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">الحالة</th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('visits.time')}</th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('visits.patient')}</th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('patients.civilId')}</th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('common.status')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">

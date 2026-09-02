@@ -1,15 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Menu, Bell, UserRound, LogOut, ChevronDown } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Menu, Bell, UserRound, LogOut, ChevronDown, Languages } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { setLanguage } from '../i18n/config';
 
 interface HeaderProps {
   onOpenSidebar: () => void;
 }
 
 export default function Header({ onOpenSidebar }: HeaderProps) {
+  const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const toggleLanguage = () => {
+    setLanguage(i18n.language === 'ar' ? 'en' : 'ar');
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -21,20 +28,20 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const roleLabel = user?.role === 'ADMIN' ? 'مدير النظام' : 'موظف استقبال';
+  const roleLabel = user?.role === 'ADMIN' ? t('roles.admin') : t('roles.receptionist');
 
   return (
     <header className="h-[72px] bg-white border-b border-[#E2E8F0] flex items-center justify-between px-5 md:px-8 shrink-0">
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenSidebar}
-          aria-label="فتح القائمة"
+          aria-label={t('common.openMenu')}
           className="md:hidden text-[#102F63] p-1.5 -mr-1.5"
         >
           <Menu size={22} />
         </button>
         <div className="hidden md:flex items-center gap-2.5">
-          <img src="/assets/logo.png" alt="مركز العيادات التخصصية" className="w-9 h-9 rounded-full" />
+          <img src="/assets/logo.png" alt="Specialized Clinics Center" className="w-9 h-9 rounded-full" />
           <div className="leading-tight">
             <div className="text-[13px] font-semibold text-[#102F63]">مركز العيادات التخصصية</div>
             <div className="text-[10px] text-[#94A3B8]">Specialized Clinics Center</div>
@@ -43,7 +50,15 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-4">
-        <button aria-label="الإشعارات" className="relative text-[#64748B] hover:text-[#102F63] p-1.5">
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center gap-1.5 text-[13px] font-medium text-[#173B78] border border-[#E2E8F0] hover:bg-[#F6F8FC] rounded-lg px-3 py-1.5 transition-colors"
+        >
+          <Languages size={16} strokeWidth={1.75} />
+          {i18n.language === 'ar' ? 'English' : 'العربية'}
+        </button>
+
+        <button aria-label={t('common.notifications')} className="relative text-[#64748B] hover:text-[#102F63] p-1.5">
           <Bell size={19} strokeWidth={1.75} />
         </button>
 
@@ -56,7 +71,7 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
               <UserRound size={16} strokeWidth={1.75} />
             </span>
             <span className="hidden sm:block text-right leading-tight">
-              <span className="block text-[13px] font-semibold text-[#102F63]">{user?.name || 'المستخدم'}</span>
+              <span className="block text-[13px] font-semibold text-[#102F63]">{user?.name || t('common.user')}</span>
               <span className="block text-[11px] text-[#94A3B8]">{roleLabel}</span>
             </span>
             <ChevronDown size={14} className="text-[#94A3B8] hidden sm:block" />
@@ -69,7 +84,7 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-[#C4362B] hover:bg-red-50 transition-colors"
               >
                 <LogOut size={15} strokeWidth={1.75} />
-                تسجيل الخروج
+                {t('common.logout')}
               </button>
             </div>
           )}
