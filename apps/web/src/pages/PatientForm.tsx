@@ -249,6 +249,7 @@ export default function PatientForm({ patientId }: PatientFormProps) {
               </label>
               <input
                 type="date"
+              lang="en-GB"
                 value={formData.dateOfBirth}
                 onChange={(e) => handleChange('dateOfBirth', e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"

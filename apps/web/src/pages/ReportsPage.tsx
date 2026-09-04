@@ -4,9 +4,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { TrendingUp, Wallet, AlertCircle, ReceiptText, ClipboardList, UsersRound, CalendarDays } from 'lucide-react';
+import { TrendingUp, Wallet, AlertCircle, ReceiptText, ClipboardList, UsersRound, CalendarDays, FileSpreadsheet, FileText, ClipboardCheck } from 'lucide-react';
 import { reportsService } from '../services/reports.service';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 
 const COLORS = ['#102F63', '#173B78', '#4B5694', '#8991A6', '#C4362B', '#C98200'];
 
@@ -35,6 +36,7 @@ function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof TrendingUp
 
 export default function ReportsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const PAYMENT_METHOD_LABELS: Record<string, string> = {
     CASH: t('payments.methodCash'), VISA: t('payments.methodVisa'), KNET: t('payments.methodKnet'), OTHER: t('payments.methodOther'),
@@ -52,6 +54,8 @@ export default function ReportsPage() {
 
   const [from, setFrom] = useState(todayMinus(29));
   const [to, setTo] = useState(today());
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const summary = useQuery({ queryKey: ['reports-summary', from, to], queryFn: () => reportsService.getSummary(from, to) });
   const revenueTimeseries = useQuery({ queryKey: ['reports-revenue-ts', from, to], queryFn: () => reportsService.getRevenueTimeseries(from, to) });
@@ -62,6 +66,28 @@ export default function ReportsPage() {
   const appointmentStatus = useQuery({ queryKey: ['reports-appt-status', from, to], queryFn: () => reportsService.getAppointmentStatus(from, to) });
   const outstanding = useQuery({ queryKey: ['reports-outstanding'], queryFn: () => reportsService.getOutstandingInvoices(1, 8) });
 
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    try {
+      await reportsService.downloadExport('pdf', from, to);
+    } catch (err) {
+      console.error('Failed to export PDF report:', err);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      await reportsService.downloadExport('excel', from, to);
+    } catch (err) {
+      console.error('Failed to export Excel report:', err);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const s = summary.data;
 
   return (
@@ -71,10 +97,33 @@ export default function ReportsPage() {
           <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.reports')}</h1>
           <p className="text-sm text-[#64748B] mt-1">{t('reports.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="ui-input w-auto" />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => navigate('/reports/daily-closing')}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC]"
+          >
+            <ClipboardCheck size={16} strokeWidth={1.75} />
+            {t('dailyClosing.title')}
+          </button>
+          <input type="date" lang="en-GB" value={from} onChange={(e) => setFrom(e.target.value)} className="ui-input w-auto" />
           <span className="text-[#94A3B8] text-sm">{t('reports.to')}</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="ui-input w-auto" />
+          <input type="date" lang="en-GB" value={to} onChange={(e) => setTo(e.target.value)} className="ui-input w-auto" />
+          <button
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC] disabled:opacity-50"
+          >
+            <FileText size={16} strokeWidth={1.75} />
+            {exportingPdf ? t('reports.exporting') : t('reports.exportPdf')}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC] disabled:opacity-50"
+          >
+            <FileSpreadsheet size={16} strokeWidth={1.75} />
+            {exportingExcel ? t('reports.exporting') : t('reports.exportExcel')}
+          </button>
         </div>
       </div>
 

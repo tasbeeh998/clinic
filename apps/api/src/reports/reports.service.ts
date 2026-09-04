@@ -41,7 +41,7 @@ export class ReportsService {
         _sum: { total: true },
       }),
       this.prisma.payment.aggregate({
-        where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
+        where: { paymentDate: { gte: fromDate, lte: toDate } },
         _sum: { amount: true },
       }),
       this.prisma.invoice.aggregate({
@@ -88,7 +88,7 @@ export class ReportsService {
     const collectedRows = await this.prisma.$queryRaw<Array<{ day: Date; collected: string }>>`
       SELECT date_trunc('day', "paymentDate") AS day, SUM("amount") AS collected
       FROM "Payment"
-      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate} AND "status" = 'RECORDED'
+      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate}
       GROUP BY day ORDER BY day ASC
     `;
 
@@ -111,7 +111,7 @@ export class ReportsService {
     const { fromDate, toDate } = this.resolveRange(from, to);
     const rows = await this.prisma.payment.groupBy({
       by: ['method'],
-      where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
+      where: { paymentDate: { gte: fromDate, lte: toDate } },
       _sum: { amount: true },
       _count: { _all: true },
     });
@@ -212,5 +212,101 @@ export class ReportsService {
     ]);
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  // Daily Closing Report — a single calendar day's snapshot of invoicing and
+  // collections, built entirely from real Invoice/Payment rows for that day.
+  // Reversed payments are excluded from collection totals (they were undone),
+  // matching what a genuine end-of-day cash closing should show.
+  async getDailyClosing(date?: string) {
+    const day = date ? new Date(date) : new Date();
+    const dayStart = startOfDay(day);
+    const dayEnd = endOfDay(day);
+
+    const [
+      invoicesToday,
+      paymentsToday,
+      paymentMethodBreakdown,
+      invoicePaymentStatusBreakdown,
+    ] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { status: 'ISSUED', issuedAt: { gte: dayStart, lte: dayEnd } },
+        orderBy: { issuedAt: 'asc' },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          total: true,
+          paid: true,
+          remaining: true,
+          paymentStatus: true,
+          issuedAt: true,
+          patient: { select: { fullNameAr: true, civilId: true } },
+        },
+      }),
+      this.prisma.payment.findMany({
+        where: { status: 'RECORDED', paymentDate: { gte: dayStart, lte: dayEnd } },
+        orderBy: { paymentDate: 'asc' },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          paymentDate: true,
+          invoice: { select: { invoiceNumber: true, patient: { select: { fullNameAr: true } } } },
+        },
+      }),
+      this.prisma.payment.groupBy({
+        by: ['method'],
+        where: { status: 'RECORDED', paymentDate: { gte: dayStart, lte: dayEnd } },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.invoice.groupBy({
+        by: ['paymentStatus'],
+        where: { status: 'ISSUED', issuedAt: { gte: dayStart, lte: dayEnd } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const totalInvoiced = invoicesToday.reduce((sum, inv) => sum + Number(inv.total), 0);
+    const totalCollected = paymentsToday.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalRemaining = invoicesToday.reduce((sum, inv) => sum + Number(inv.remaining), 0);
+
+    const paymentStatusCounts: Record<string, number> = { UNPAID: 0, PARTIALLY_PAID: 0, PAID: 0 };
+    for (const row of invoicePaymentStatusBreakdown) {
+      paymentStatusCounts[row.paymentStatus] = row._count._all;
+    }
+
+    return {
+      date: dayStart.toISOString().slice(0, 10),
+      totalInvoiced,
+      totalCollected,
+      totalRemaining,
+      invoiceCount: invoicesToday.length,
+      paymentMethods: paymentMethodBreakdown.map((r) => ({
+        method: r.method,
+        amount: Number(r._sum.amount || 0),
+        count: r._count._all,
+      })),
+      paymentStatusCounts,
+      invoices: invoicesToday.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        patientName: inv.patient.fullNameAr,
+        civilId: inv.patient.civilId,
+        total: Number(inv.total),
+        paid: Number(inv.paid),
+        remaining: Number(inv.remaining),
+        paymentStatus: inv.paymentStatus,
+        issuedAt: inv.issuedAt,
+      })),
+      payments: paymentsToday.map((p) => ({
+        id: p.id,
+        invoiceNumber: p.invoice.invoiceNumber,
+        patientName: p.invoice.patient.fullNameAr,
+        amount: Number(p.amount),
+        method: p.method,
+        paymentDate: p.paymentDate,
+      })),
+    };
   }
 }

@@ -9,12 +9,14 @@ import cookieParser from 'cookie-parser';
 describe('Reports Module Tests (E2E)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  let adminAccessToken: string;
   let adminUserId: string;
   let testPatientId: string;
-  let testVisitId: string;
-  let testInvoiceId: string;
   let testServiceId: string;
+  let adminAccessToken: string;
+  let receptionistAccessToken: string;
+
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -29,35 +31,24 @@ describe('Reports Module Tests (E2E)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    // Clean up test data - delete in correct order to respect foreign key constraints
     const testUsers = await prisma.user.findMany({
       where: { email: { contains: '@test.com' } },
       select: { id: true },
     });
-    const testUserIds = testUsers.map(u => u.id);
+    const testUserIds = testUsers.map((u) => u.id);
 
     if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: testUserIds } },
-      });
+      await prisma.auditLog.deleteMany({ where: { userId: { in: testUserIds } } });
     }
 
-    await prisma.refreshToken.deleteMany();
-    await prisma.paymentAllocation.deleteMany();
     await prisma.payment.deleteMany();
-    await prisma.invoiceAdditionalCharge.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
     await prisma.service.deleteMany();
-    await prisma.patient.deleteMany({
-      where: { civilId: '10000000' },
-    });
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
+    await prisma.patient.deleteMany();
+    await prisma.user.deleteMany({ where: { email: { contains: '@test.com' } } });
 
-    // Create admin user
     const adminPasswordHash = await argon2.hash('admin123');
     const admin = await prisma.user.create({
       data: {
@@ -70,272 +61,232 @@ describe('Reports Module Tests (E2E)', () => {
     });
     adminUserId = admin.id;
 
-    // Get admin token
-    const loginResponse = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: 'testadmin.reports@test.com', password: 'admin123' });
-    adminAccessToken = loginResponse.body.accessToken;
+    const receptionistPasswordHash = await argon2.hash('receptionist123');
+    await prisma.user.create({
+      data: {
+        email: 'testreceptionist.reports@test.com',
+        passwordHash: receptionistPasswordHash,
+        name: 'Test Receptionist',
+        role: 'RECEPTIONIST',
+        isActive: true,
+      },
+    });
 
-    // Create test patient
     const patient = await prisma.patient.create({
       data: {
-        civilId: '10000000',
-        fullNameAr: 'تقارير اختبار',
-        fullNameEn: 'Test Reports',
-        phone: '5551234567',
+        civilId: '11122233344',
+        fullNameAr: 'سارة أحمد',
+        phone: '99911122',
         createdById: adminUserId,
       },
     });
     testPatientId = patient.id;
 
-    // Create visit
-    const visit = await prisma.visit.create({
-      data: {
-        patientId: testPatientId,
-        type: 'OTHER',
-        createdById: adminUserId,
-      },
-    });
-    testVisitId = visit.id;
-
-    // Create service
     const service = await prisma.service.create({
-      data: {
-        name: 'تقرير اختبار',
-        code: 'TEST-001',
-        currentPrice: 50,
-        isActive: true,
-        createdById: adminUserId,
-      },
+      data: { name: 'Consultation', currentPrice: 40, isActive: true, createdById: adminUserId },
     });
     testServiceId = service.id;
 
-    // Create invoice
-    const invoice = await prisma.invoice.create({
+    // Invoice #1: issued today, fully paid via one CASH payment
+    const visit1 = await prisma.visit.create({
+      data: { patientId: testPatientId, type: 'CHECKUP', createdById: adminUserId },
+    });
+    const invoice1 = await prisma.invoice.create({
       data: {
-        invoiceNumber: 'DRAFT-test-reports',
-        visitId: testVisitId,
+        invoiceNumber: 'INV-RPT01',
+        visitId: visit1.id,
         patientId: testPatientId,
-        status: 'DRAFT',
-        subtotal: 50,
-        total: 50,
-        paid: 0,
-        remaining: 50,
-        paymentStatus: 'UNPAID',
+        status: 'ISSUED',
+        subtotal: 40,
+        total: 40,
+        paid: 40,
+        remaining: 0,
+        paymentStatus: 'PAID',
         createdById: adminUserId,
+        issuedAt: today,
+        issuedById: adminUserId,
         invoiceItems: {
-          create: {
-            serviceNameSnapshot: 'تقرير اختبار',
-            unitPriceSnapshot: 50,
-            quantity: 1,
-            lineTotal: 50,
-            serviceId: service.id,
-          },
+          create: [{ serviceId: testServiceId, serviceNameSnapshot: 'Consultation', unitPriceSnapshot: 40, quantity: 1, lineTotal: 40 }],
         },
       },
     });
-    testInvoiceId = invoice.id;
+
+    await prisma.payment.create({
+      data: {
+        invoiceId: invoice1.id,
+        amount: 40,
+        method: 'CASH',
+        status: 'RECORDED',
+        paymentDate: today,
+        recordedById: adminUserId,
+      },
+    });
+
+    // Invoice #2: issued today, partially paid via VISA — leaves a real
+    // outstanding balance for the day.
+    const visit2 = await prisma.visit.create({
+      data: { patientId: testPatientId, type: 'FOLLOW_UP', createdById: adminUserId },
+    });
+    const invoice2 = await prisma.invoice.create({
+      data: {
+        invoiceNumber: 'INV-RPT02',
+        visitId: visit2.id,
+        patientId: testPatientId,
+        status: 'ISSUED',
+        subtotal: 40,
+        total: 40,
+        paid: 15,
+        remaining: 25,
+        paymentStatus: 'PARTIALLY_PAID',
+        createdById: adminUserId,
+        issuedAt: today,
+        issuedById: adminUserId,
+        invoiceItems: {
+          create: [{ serviceId: testServiceId, serviceNameSnapshot: 'Consultation', unitPriceSnapshot: 40, quantity: 1, lineTotal: 40 }],
+        },
+      },
+    });
+
+    await prisma.payment.create({
+      data: {
+        invoiceId: invoice2.id,
+        amount: 15,
+        method: 'VISA',
+        status: 'RECORDED',
+        paymentDate: today,
+        recordedById: adminUserId,
+      },
+    });
+
+    // A REVERSED payment on invoice #2 — must be excluded from today's totals.
+    await prisma.payment.create({
+      data: {
+        invoiceId: invoice2.id,
+        amount: 100,
+        method: 'CASH',
+        status: 'REVERSED',
+        paymentDate: today,
+        reversedAt: today,
+        reversedBy: adminUserId,
+        reversalNotes: 'Entered by mistake',
+        recordedById: adminUserId,
+      },
+    });
+
+    const adminResponse = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'testadmin.reports@test.com', password: 'admin123' });
+    adminAccessToken = adminResponse.body.accessToken;
+
+    const receptionistResponse = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: 'testreceptionist.reports@test.com', password: 'receptionist123' });
+    receptionistAccessToken = receptionistResponse.body.accessToken;
   });
 
   afterAll(async () => {
-    await prisma.refreshToken.deleteMany();
-    await prisma.paymentAllocation.deleteMany();
+    const testUsers = await prisma.user.findMany({
+      where: { email: { contains: '@test.com' } },
+      select: { id: true },
+    });
+    const testUserIds = testUsers.map((u) => u.id);
+
+    if (testUserIds.length > 0) {
+      await prisma.auditLog.deleteMany({ where: { userId: { in: testUserIds } } });
+    }
+
     await prisma.payment.deleteMany();
-    await prisma.invoiceAdditionalCharge.deleteMany();
     await prisma.invoiceItem.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.visit.deleteMany();
     await prisma.service.deleteMany();
-    await prisma.patient.deleteMany({
-      where: { civilId: '10000000' },
-    });
-    
-    // Delete audit logs for test users first
-    const cleanupTestUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const cleanupTestUserIds = cleanupTestUsers.map(u => u.id);
-
-    if (cleanupTestUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: cleanupTestUserIds } },
-      });
-    }
-    
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
+    await prisma.patient.deleteMany();
+    await prisma.user.deleteMany({ where: { email: { contains: '@test.com' } } });
     await app.close();
   });
 
-  describe('Payment Reversal Exclusion', () => {
-    it('should include RECORDED payment in summary total collected', async () => {
-      // Create a RECORDED payment
-      const payment = await prisma.payment.create({
-        data: {
-          invoiceId: testInvoiceId,
-          amount: 30,
-          method: 'VISA',
-          status: 'RECORDED',
-          recordedById: adminUserId,
-        },
-      });
+  describe('Daily Closing Report', () => {
+    it('should reject access for receptionist (admin-only)', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/reports/daily-closing?date=${todayStr}`)
+        .set('Authorization', `Bearer ${receptionistAccessToken}`)
+        .expect(403);
+    });
 
-      // Get summary including the new payment
+    it('should reject unauthenticated access', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/reports/daily-closing?date=${todayStr}`)
+        .expect(401);
+    });
+
+    it("should correctly total today's invoices, excluding VOID and reversed payments", async () => {
       const response = await request(app.getHttpServer())
-        .get('/api/reports/summary')
+        .get(`/api/reports/daily-closing?date=${todayStr}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
 
-      expect(response.body.totalCollected).toBeGreaterThan(0);
-      
-      // Clean up
-      await prisma.payment.delete({ where: { id: payment.id } });
+      expect(response.body.date).toBe(todayStr);
+      expect(response.body.invoiceCount).toBe(2);
+      expect(response.body.totalInvoiced).toBe(80); // 40 + 40
+      // 40 (full) + 15 (partial) = 55 — the REVERSED 100 CASH payment must NOT count
+      expect(response.body.totalCollected).toBe(55);
+      expect(response.body.totalRemaining).toBe(25); // only invoice #2's balance
+
+      expect(response.body.paymentStatusCounts).toEqual({
+        UNPAID: 0,
+        PARTIALLY_PAID: 1,
+        PAID: 1,
+      });
     });
 
-    it('should exclude REVERSED payment from summary total collected', async () => {
-      // Create a payment
-      const payment = await prisma.payment.create({
-        data: {
-          invoiceId: testInvoiceId,
-          amount: 30,
-          method: 'VISA',
-          status: 'RECORDED',
-          recordedById: adminUserId,
-        },
-      });
-
-      // Get summary including the new payment
-      const summaryBefore = await request(app.getHttpServer())
-        .get('/api/reports/summary')
+    it('should break down collected payments by method, excluding the reversed one', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/reports/daily-closing?date=${todayStr}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
-      const collectedBefore = summaryBefore.body.totalCollected;
 
-      // Reverse the payment
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'REVERSED',
-          reversedAt: new Date(),
-          reversedBy: adminUserId,
-          reversalNotes: 'Test reversal',
-        },
-      });
+      const cash = response.body.paymentMethods.find((m: { method: string }) => m.method === 'CASH');
+      const visa = response.body.paymentMethods.find((m: { method: string }) => m.method === 'VISA');
 
-      // Get summary after reversal
-      const summaryAfter = await request(app.getHttpServer())
-        .get('/api/reports/summary')
-        .set('Authorization', `Bearer ${adminAccessToken}`)
-        .expect(200);
-      const collectedAfter = summaryAfter.body.totalCollected;
-
-      // Collected amount should decrease by the reversed payment amount
-      expect(collectedAfter).toBeLessThan(collectedBefore);
-      expect(collectedAfter).toBe(collectedBefore - 30);
+      // Only the 40 RECORDED cash payment should count — not the 100 reversed one.
+      expect(cash.amount).toBe(40);
+      expect(cash.count).toBe(1);
+      expect(visa.amount).toBe(15);
+      expect(visa.count).toBe(1);
     });
 
-    it('should exclude REVERSED payments from payment method breakdown', async () => {
-      // Create payments with different methods
-      const cashPayment = await prisma.payment.create({
-        data: {
-          invoiceId: testInvoiceId,
-          amount: 100,
-          method: 'CASH',
-          status: 'RECORDED',
-          recordedById: adminUserId,
-        },
-      });
-
-      const visaPayment = await prisma.payment.create({
-        data: {
-          invoiceId: testInvoiceId,
-          amount: 75,
-          method: 'VISA',
-          status: 'RECORDED',
-          recordedById: adminUserId,
-        },
-      });
-
-      // Get payment method breakdown before reversal
-      const breakdownBefore = await request(app.getHttpServer())
-        .get('/api/reports/payment-methods')
+    it('should list the actual invoices and payments for the day', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/reports/daily-closing?date=${todayStr}`)
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
-      const cashBefore = breakdownBefore.body.find((m: any) => m.method === 'CASH')?.amount || 0;
-      const visaBefore = breakdownBefore.body.find((m: any) => m.method === 'VISA')?.amount || 0;
 
-      // Reverse the VISA payment
-      await prisma.payment.update({
-        where: { id: visaPayment.id },
-        data: {
-          status: 'REVERSED',
-          reversedAt: new Date(),
-          reversedBy: adminUserId,
-          reversalNotes: 'Test reversal',
-        },
-      });
-
-      // Get payment method breakdown after reversal
-      const breakdownAfter = await request(app.getHttpServer())
-        .get('/api/reports/payment-methods')
-        .set('Authorization', `Bearer ${adminAccessToken}`)
-        .expect(200);
-      const cashAfter = breakdownAfter.body.find((m: any) => m.method === 'CASH')?.amount || 0;
-      const visaAfter = breakdownAfter.body.find((m: any) => m.method === 'VISA')?.amount || 0;
-
-      // CASH should remain the same
-      expect(cashAfter).toBe(cashBefore);
-
-      // VISA should be excluded
-      expect(visaAfter).toBe(0);
-
-      // Clean up
-      await prisma.payment.deleteMany({ where: { id: { in: [cashPayment.id, visaPayment.id] } } });
+      expect(response.body.invoices).toHaveLength(2);
+      expect(response.body.invoices[0].patientName).toBe('سارة أحمد');
+      // Only RECORDED payments are listed — the reversed one is excluded here too.
+      expect(response.body.payments).toHaveLength(2);
     });
 
-    it('should exclude REVERSED payments from revenue timeseries', async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const payment = await prisma.payment.create({
-        data: {
-          invoiceId: testInvoiceId,
-          amount: 40,
-          method: 'KNET',
-          status: 'RECORDED',
-          paymentDate: new Date(),
-          recordedById: adminUserId,
-        },
-      });
-
-      // Get revenue timeseries before reversal
-      const timeseriesBefore = await request(app.getHttpServer())
-        .get(`/api/reports/revenue-timeseries?from=${today}&to=${today}`)
+    it('should return all zeros for a date with no activity', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/reports/daily-closing?date=2020-01-01')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
-      const collectedBefore = timeseriesBefore.body.find((t: any) => t.date === today)?.collected || 0;
 
-      // Reverse the payment
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'REVERSED',
-          reversedAt: new Date(),
-          reversedBy: adminUserId,
-          reversalNotes: 'Test reversal',
-        },
-      });
+      expect(response.body.invoiceCount).toBe(0);
+      expect(response.body.totalInvoiced).toBe(0);
+      expect(response.body.totalCollected).toBe(0);
+      expect(response.body.invoices).toHaveLength(0);
+      expect(response.body.payments).toHaveLength(0);
+    });
 
-      // Get revenue timeseries after reversal
-      const timeseriesAfter = await request(app.getHttpServer())
-        .get(`/api/reports/revenue-timeseries?from=${today}&to=${today}`)
+    it('should default to today when no date is provided', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/reports/daily-closing')
         .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
-      const collectedAfter = timeseriesAfter.body.find((t: any) => t.date === today)?.collected || 0;
 
-      // Collected amount should decrease
-      expect(collectedAfter).toBeLessThan(collectedBefore);
-      expect(collectedAfter).toBe(collectedBefore - 40);
+      expect(response.body.date).toBe(todayStr);
     });
   });
 });

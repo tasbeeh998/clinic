@@ -40,7 +40,12 @@
     "back": "Back",
     "clearFilters": "Clear filters",
     "showingRange": "Showing {{from}} to {{to}} of {{total}} {{item}}",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "print": "Print",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "markAllRead": "Mark all read",
+    "noNotifications": "No notifications"
   },
   "roles": {
     "admin": "Admin",
@@ -342,7 +347,11 @@
     "noAppointmentsInPeriod": "No appointments in this period",
     "topOutstandingInvoices": "Top Outstanding Invoices",
     "noOutstandingCurrently": "No outstanding balances currently",
-    "footerNote": "All reports are calculated based on actual data recorded in the system."
+    "footerNote": "All reports are calculated based on actual data recorded in the system.",
+    "exportPdf": "Export PDF",
+    "exportExcel": "Export Excel",
+    "exporting": "Exporting...",
+    "exportError": "Failed to export report"
   },
   "settings": {
     "subtitle": "Manage system settings, permissions, notifications, backups, and security",
@@ -436,5 +445,20 @@
     "backupLoadError": "Failed to load backup data",
     "backupCreateError": "Failed to create backup",
     "backupRestoreError": "Failed to restore backup"
+  },
+  "dailyClosing": {
+    "title": "Daily Closing",
+    "subtitle": "End-of-day summary of invoicing and collections",
+    "loadError": "Failed to load daily closing report",
+    "totalInvoiced": "Total Invoiced",
+    "totalCollected": "Total Collected",
+    "invoiceCount": "Number of Invoices",
+    "invoicesByStatus": "Invoices by Payment Status",
+    "invoicesToday": "Invoices",
+    "paymentsToday": "Payments"
+  },
+  "notifications": {
+    "backupDue": "A backup is due — the last one is over a day old",
+    "appointmentUpcoming": "Upcoming appointment: {{name}}"
   }
 }

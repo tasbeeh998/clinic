@@ -40,7 +40,12 @@
     "back": "عودة",
     "clearFilters": "مسح الفلاتر",
     "showingRange": "عرض {{from}} إلى {{to}} من {{total}} {{item}}",
-    "openMenu": "فتح القائمة"
+    "openMenu": "فتح القائمة",
+    "print": "طباعة",
+    "showPassword": "إظهار كلمة المرور",
+    "hidePassword": "إخفاء كلمة المرور",
+    "markAllRead": "تحديد الكل كمقروء",
+    "noNotifications": "لا توجد إشعارات"
   },
   "roles": {
     "admin": "مدير النظام",
@@ -342,7 +347,11 @@
     "noAppointmentsInPeriod": "لا توجد مواعيد في هذه الفترة",
     "topOutstandingInvoices": "أعلى الفواتير المستحقة",
     "noOutstandingCurrently": "لا توجد مستحقات حاليًا",
-    "footerNote": "جميع التقارير يتم احتسابها بناءً على البيانات الفعلية المسجلة في النظام."
+    "footerNote": "جميع التقارير يتم احتسابها بناءً على البيانات الفعلية المسجلة في النظام.",
+    "exportPdf": "تصدير PDF",
+    "exportExcel": "تصدير Excel",
+    "exporting": "جارِ التصدير...",
+    "exportError": "فشل تصدير التقرير"
   },
   "settings": {
     "subtitle": "إدارة إعدادات النظام والصلاحيات والتنبيهات والنسخ الاحتياطي والأمان",
@@ -436,5 +445,20 @@
     "backupLoadError": "فشل تحميل بيانات النسخ الاحتياطي",
     "backupCreateError": "فشل إنشاء النسخة الاحتياطية",
     "backupRestoreError": "فشل استعادة النسخة الاحتياطية"
+  },
+  "dailyClosing": {
+    "title": "الإغلاق اليومي",
+    "subtitle": "ملخص نهاية اليوم للفواتير والتحصيلات",
+    "loadError": "فشل تحميل تقرير الإغلاق اليومي",
+    "totalInvoiced": "إجمالي الفواتير",
+    "totalCollected": "إجمالي المدفوعات",
+    "invoiceCount": "عدد الفواتير",
+    "invoicesByStatus": "الفواتير حسب حالة الدفع",
+    "invoicesToday": "الفواتير",
+    "paymentsToday": "المدفوعات"
+  },
+  "notifications": {
+    "backupDue": "حان وقت عمل نسخة احتياطية — آخر نسخة مر عليها أكتر من يوم",
+    "appointmentUpcoming": "موعد قريب: {{name}}"
   }
 }

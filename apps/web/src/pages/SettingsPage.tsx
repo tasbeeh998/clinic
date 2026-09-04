@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   UsersRound, Bell, ShieldCheck, FileClock, Server, Lock, DatabaseBackup,
-  CheckCircle2, XCircle, Loader2, Plus, X,
+  CheckCircle2, XCircle, Loader2, Plus, X, Eye, EyeOff,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usersService, AppUser } from '../services/users.service';
@@ -445,6 +445,9 @@ function SecuritySection() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -487,9 +490,62 @@ function SecuritySection() {
       {error && <div className="mb-3 px-3 py-2 bg-red-50 border border-red-100 text-[#C4362B] rounded-lg text-sm">{error}</div>}
       {success && <div className="mb-3 px-3 py-2 bg-green-50 border border-green-100 text-[var(--success)] rounded-lg text-sm">{success}</div>}
       <form onSubmit={handleSubmit} className="space-y-3">
-        <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder={t('settings.currentPassword')} required className="ui-input" />
-        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t('settings.newPassword')} required minLength={6} className="ui-input" />
-        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t('settings.confirmNewPassword')} required minLength={6} className="ui-input" />
+        <div className="relative">
+          <input
+            type={showCurrent ? 'text' : 'password'}
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder={t('settings.currentPassword')}
+            required
+            className="ui-input pl-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowCurrent((v) => !v)}
+            className="absolute top-1/2 -translate-y-1/2 left-3 text-[#94A3B8]"
+            aria-label={showCurrent ? t('common.hidePassword') : t('common.showPassword')}
+          >
+            {showCurrent ? <EyeOff size={17} strokeWidth={1.75} /> : <Eye size={17} strokeWidth={1.75} />}
+          </button>
+        </div>
+        <div className="relative">
+          <input
+            type={showNew ? 'text' : 'password'}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder={t('settings.newPassword')}
+            required
+            minLength={6}
+            className="ui-input pl-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowNew((v) => !v)}
+            className="absolute top-1/2 -translate-y-1/2 left-3 text-[#94A3B8]"
+            aria-label={showNew ? t('common.hidePassword') : t('common.showPassword')}
+          >
+            {showNew ? <EyeOff size={17} strokeWidth={1.75} /> : <Eye size={17} strokeWidth={1.75} />}
+          </button>
+        </div>
+        <div className="relative">
+          <input
+            type={showConfirm ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder={t('settings.confirmNewPassword')}
+            required
+            minLength={6}
+            className="ui-input pl-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirm((v) => !v)}
+            className="absolute top-1/2 -translate-y-1/2 left-3 text-[#94A3B8]"
+            aria-label={showConfirm ? t('common.hidePassword') : t('common.showPassword')}
+          >
+            {showConfirm ? <EyeOff size={17} strokeWidth={1.75} /> : <Eye size={17} strokeWidth={1.75} />}
+          </button>
+        </div>
         <button type="submit" disabled={submitting} className="btn-primary px-4 py-2.5 text-sm">
           {submitting ? t('common.saving') : t('settings.saveNewPassword')}
         </button>

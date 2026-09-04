@@ -7,5 +7,6 @@ import { AuditModule } from '../audit/audit.module';
   imports: [AuditModule],
   controllers: [BackupController],
   providers: [BackupService],
+  exports: [BackupService], // needed so NotificationsModule can inject it
 })
 export class BackupModule {}

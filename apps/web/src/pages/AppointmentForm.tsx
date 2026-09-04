@@ -153,6 +153,7 @@ export default function AppointmentForm() {
                 </label>
                 <input
                   type="date"
+              lang="en-GB"
                   value={formData.scheduledAt ? formData.scheduledAt.split('T')[0] : ''}
                   onChange={(e) => {
                     const time = formData.scheduledAt ? formData.scheduledAt.split('T')[1] || '10:00' : '10:00';

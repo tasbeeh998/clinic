@@ -118,6 +118,7 @@ export default function VisitsList() {
         </div>
         <input
           type="date"
+              lang="en-GB"
           value={dateFilter}
           onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
           className="ui-input w-auto"
@@ -245,5 +246,3 @@ export default function VisitsList() {
     </div>
   );
 }
-
-
