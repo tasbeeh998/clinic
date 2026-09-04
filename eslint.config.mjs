@@ -21,6 +21,19 @@ export default [
         document: 'readonly',
         process: 'readonly',
         window: 'readonly',
+        fetch: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        URLSearchParams: 'readonly',
+        FormData: 'readonly',
+        Blob: 'readonly',
+        navigator: 'readonly',
+        React: 'readonly',
+        HTMLDivElement: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLButtonElement: 'readonly',
+        MouseEvent: 'readonly',
+        Node: 'readonly',
       },
     },
     plugins: {
@@ -29,3 +42,4 @@ export default [
     rules: tseslint.configs.recommended.rules,
   },
 ];
+

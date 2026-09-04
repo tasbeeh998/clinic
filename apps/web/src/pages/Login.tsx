@@ -44,11 +44,6 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-b from-[#102F63]/95 via-[#102F63]/90 to-[#0B2450]" />
 
         <div className="relative flex-1 flex flex-col items-center justify-center px-10 py-16 text-center">
-          <img
-            src="/assets/logo.png"
-            alt="Specialized Clinics Center"
-            className="w-28 h-28 rounded-full mb-6 shadow-[var(--shadow-soft-lg)]"
-          />
           <h1 className="text-2xl font-bold mb-1">مركز العيادات التخصصية</h1>
           <p className="text-sm text-white/70 tracking-wide mb-4">Specialized Clinics Center</p>
           <p className="text-[13px] text-white/60 max-w-xs">{t('login.tagline')}</p>
@@ -65,7 +60,6 @@ export default function Login() {
         <div className="w-full max-w-[400px]">
           {/* Mobile-only compact branding */}
           <div className="md:hidden flex flex-col items-center text-center mb-8">
-            <img src="/assets/logo.png" alt="Specialized Clinics Center" className="w-16 h-16 rounded-full mb-3" />
             <h1 className="text-lg font-bold text-[#102F63]">مركز العيادات التخصصية</h1>
           </div>
 
