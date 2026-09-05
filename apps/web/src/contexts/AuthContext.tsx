@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { setAccessToken as setInMemoryAccessToken } from '../config/auth-token';
 
 interface User {
@@ -22,14 +22,39 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// The access token itself is good for 15 minutes (see auth.service.ts on
+// the backend: expiresIn: '15m'). Refreshing every 13 minutes renews it
+// with 2 minutes of headroom, so a request never lands in that last-second
+// gap between "about to expire" and "actually expired".
+const REFRESH_INTERVAL_MS = 13 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearRefreshTimer = () => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  };
+
+  const startRefreshTimer = () => {
+    clearRefreshTimer();
+    refreshTimerRef.current = setInterval(() => {
+      refreshAccessToken().catch(() => {
+        // refreshAccessToken already clears auth state on failure — nothing
+        // else to do here besides letting the interval stop itself.
+        clearRefreshTimer();
+      });
+    }, REFRESH_INTERVAL_MS);
+  };
 
   useEffect(() => {
-    // On mount, try to refresh the session using the refresh token cookie
-    // This recovers the session without needing localStorage for accessToken
+    // On mount, try to refresh the session using the refresh token cookie.
+    // This recovers the session without needing localStorage for accessToken.
     const recoverSession = async () => {
       try {
         const response = await fetch(`${API_URL}/api/auth/refresh`, {
@@ -42,14 +67,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(data.user);
           setAccessToken(data.accessToken);
           setInMemoryAccessToken(data.accessToken);
+          startRefreshTimer();
         } else {
-          // Refresh failed - clear any existing auth state
           setUser(null);
           setAccessToken(null);
           setInMemoryAccessToken(null);
         }
       } catch (error) {
-        // Session recovery failed - clear any existing auth state
         console.error('Session recovery failed:', error);
         setUser(null);
         setAccessToken(null);
@@ -60,6 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     recoverSession();
+
+    // Stop the timer if the component unmounts (e.g. hot reload in dev).
+    return () => clearRefreshTimer();
   }, []);
 
   const login = async (email: string, password: string, rememberMe = false) => {
@@ -82,9 +109,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     setAccessToken(data.accessToken);
     setInMemoryAccessToken(data.accessToken);
+    startRefreshTimer();
   };
 
   const logout = async () => {
+    clearRefreshTimer();
     try {
       await fetch(`${API_URL}/api/auth/logout`, {
         method: 'POST',
@@ -112,14 +141,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
 
-      // Update both access token and user data from server
       setAccessToken(data.accessToken);
       if (data.user) {
         setUser(data.user);
       }
       setInMemoryAccessToken(data.accessToken);
     } catch (error) {
-      // On refresh failure, clear auth state completely
+      clearRefreshTimer();
       setUser(null);
       setAccessToken(null);
       setInMemoryAccessToken(null);
@@ -147,5 +175,3 @@ export function useAuth() {
   }
   return context;
 }
-
-
