@@ -12,7 +12,7 @@ export class AppointmentsService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
-  ) {}
+  ) { }
 
   // Status transition rules
   private readonly VALID_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
@@ -31,7 +31,7 @@ export class AppointmentsService {
     const validTransitions = this.VALID_TRANSITIONS[currentStatus];
     if (!validTransitions.includes(newStatus)) {
       throw new BadRequestException(
-        `Cannot transition from ${ currentStatus } to ${ newStatus }. Valid transitions: ${ validTransitions.join(', ') }`
+        `Cannot transition from ${currentStatus} to ${newStatus}. Valid transitions: ${validTransitions.join(', ')}`
       );
     }
   }
@@ -53,6 +53,7 @@ export class AppointmentsService {
     const appointment = await this.prisma.appointment.create({
       data: {
         ...createAppointmentDto,
+        scheduledAt: new Date(createAppointmentDto.scheduledAt),
         status: AppointmentStatus.BOOKED,
         createdById: userId,
       },
@@ -176,7 +177,10 @@ export class AppointmentsService {
 
     const updated = await this.prisma.appointment.update({
       where: { id },
-      data: updateAppointmentDto,
+      data: {
+        ...updateAppointmentDto,
+        ...(updateAppointmentDto.scheduledAt && { scheduledAt: new Date(updateAppointmentDto.scheduledAt) }),
+      },
       include: {
         patient: {
           select: {
@@ -258,7 +262,7 @@ export class AppointmentsService {
       where: { id },
       data: {
         status: AppointmentStatus.CANCELLED,
-        notes: cancelDto.reason ? `${ appointment.notes || '' }\n\nCancellation reason: ${ cancelDto.reason }`.trim() : appointment.notes,
+        notes: cancelDto.reason ? `${appointment.notes || ''}\n\nCancellation reason: ${cancelDto.reason}`.trim() : appointment.notes,
       },
       include: {
         patient: {

@@ -94,7 +94,14 @@ export default function VisitForm() {
       return;
     }
 
-    createMutation.mutate(formData);
+    // Don't send an empty string for appointmentId — the backend expects
+    // either a valid UUID or the field omitted entirely.
+    const payload: CreateVisitDto = { ...formData };
+    if (!payload.appointmentId) {
+      delete payload.appointmentId;
+    }
+
+    createMutation.mutate(payload);
   };
 
   const handlePatientSelect = (patientId: string, patientName: string) => {

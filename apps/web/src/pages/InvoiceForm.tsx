@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { visitsService } from '../services/visits.service';
 import { servicesService } from '../services/services.service';
-import { invoicesService } from '../services/invoices.service';
+import { invoicesService, CreateInvoiceDto } from '../services/invoices.service';
 import { useTranslation } from 'react-i18next';
 
 interface LineItem {
@@ -42,7 +42,7 @@ export default function InvoiceForm() {
   const services = servicesData?.data || [];
 
   const createMutation = useMutation({
-    mutationFn: invoicesService.createInvoice,
+    mutationFn: (data: CreateInvoiceDto) => invoicesService.createInvoice(data),
     onSuccess: (invoice) => {
       navigate(`/invoices/${invoice.id}`);
     },
@@ -100,7 +100,7 @@ export default function InvoiceForm() {
         // own default price — omitting it otherwise keeps existing behavior
         // (backend falls back to the service's currentPrice automatically).
         ...(i.unitPrice !== null &&
-        i.unitPrice !== parseFloat(services.find((s) => s.id === i.serviceId)?.currentPrice || '0')
+          i.unitPrice !== parseFloat(services.find((s) => s.id === i.serviceId)?.currentPrice || '0')
           ? { unitPrice: i.unitPrice }
           : {}),
       }));
@@ -113,8 +113,8 @@ export default function InvoiceForm() {
       return;
     }
 
-    createMutation.mutate({ 
-      visitId, 
+    createMutation.mutate({
+      visitId,
       items: validItems,
       additionalCharges: additionalCharges.length > 0 ? additionalCharges : undefined,
     });
@@ -266,7 +266,7 @@ export default function InvoiceForm() {
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
                 />
                 <div className="w-24 pt-2 text-gray-700 text-sm">
-                  {charge.chargeType === 'PERCENTAGE' 
+                  {charge.chargeType === 'PERCENTAGE'
                     ? `${((subtotal * charge.chargeValue) / 100).toFixed(3)} ${t('common.currency')}`
                     : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`
                   }
@@ -303,7 +303,7 @@ export default function InvoiceForm() {
                   ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`})
                 </span>
                 <span className="text-gray-900">
-                  {charge.chargeType === 'PERCENTAGE' 
+                  {charge.chargeType === 'PERCENTAGE'
                     ? ((subtotal * charge.chargeValue) / 100).toFixed(3)
                     : charge.chargeValue.toFixed(3)
                   } {t('common.currency')}

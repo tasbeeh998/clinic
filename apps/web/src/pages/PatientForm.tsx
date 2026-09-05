@@ -102,10 +102,18 @@ export default function PatientForm({ patientId }: PatientFormProps) {
       return;
     }
 
+    // The date input gives back "YYYY-MM-DD" — Prisma's DateTime
+    // column needs a full ISO-8601 datetime, and an empty string must
+    // become undefined (not sent) rather than an invalid empty date.
+    const payload = {
+      ...formData,
+      dateOfBirth: formData.dateOfBirth ? `${formData.dateOfBirth}T00:00:00.000Z` : undefined,
+    };
+
     if (patientId) {
-      updateMutation.mutate({ id: patientId, data: formData as UpdatePatientDto });
+      updateMutation.mutate({ id: patientId, data: payload as UpdatePatientDto });
     } else {
-      createMutation.mutate(formData as CreatePatientDto);
+      createMutation.mutate(payload as CreatePatientDto);
     }
   };
 
