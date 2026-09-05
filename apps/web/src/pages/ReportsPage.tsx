@@ -8,6 +8,7 @@ import { TrendingUp, Wallet, AlertCircle, ReceiptText, ClipboardList, UsersRound
 import { reportsService } from '../services/reports.service';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import DateInput from '../components/DateInput';
 
 const COLORS = ['#102F63', '#173B78', '#4B5694', '#8991A6', '#C4362B', '#C98200'];
 
@@ -105,9 +106,9 @@ export default function ReportsPage() {
             <ClipboardCheck size={16} strokeWidth={1.75} />
             {t('dailyClosing.title')}
           </button>
-          <input type="date" lang="en-GB" value={from} onChange={(e) => setFrom(e.target.value)} className="ui-input w-auto" />
+          <DateInput value={from} onChange={setFrom} className="ui-input w-auto" />
           <span className="text-[#94A3B8] text-sm">{t('reports.to')}</span>
-          <input type="date" lang="en-GB" value={to} onChange={(e) => setTo(e.target.value)} className="ui-input w-auto" />
+          <DateInput value={to} onChange={setTo} className="ui-input w-auto" />
           <button
             onClick={handleExportPdf}
             disabled={exportingPdf}

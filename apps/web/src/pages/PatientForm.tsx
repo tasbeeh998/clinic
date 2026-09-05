@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { patientsService, CreatePatientDto, UpdatePatientDto } from '../services/patients.service';
 import { useTranslation } from 'react-i18next';
+import DateInput from '../components/DateInput';
 
 interface PatientFormProps {
   patientId?: string;
@@ -172,9 +173,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 value={formData.civilId}
                 onChange={(e) => handleChange('civilId', e.target.value)}
                 maxLength={12}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.civilId ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.civilId ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('patients.civilIdPlaceholder')}
               />
               {errors.civilId && (
@@ -192,9 +192,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 value={formData.fullNameAr}
                 onChange={(e) => handleChange('fullNameAr', e.target.value)}
                 maxLength={255}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.fullNameAr ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.fullNameAr ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('patients.nameArPlaceholder')}
               />
               {errors.fullNameAr && (
@@ -212,9 +211,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 value={formData.fullNameEn}
                 onChange={(e) => handleChange('fullNameEn', e.target.value)}
                 maxLength={255}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.fullNameEn ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.fullNameEn ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder="Enter name in English"
               />
               {errors.fullNameEn && (
@@ -232,9 +230,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 value={formData.phone}
                 onChange={(e) => handleChange('phone', e.target.value)}
                 maxLength={20}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.phone ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('patients.phonePlaceholder')}
               />
               {errors.phone && (
@@ -247,12 +244,10 @@ export default function PatientForm({ patientId }: PatientFormProps) {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('patients.dobLabel')}
               </label>
-              <input
-                type="date"
-              lang="en-GB"
-                value={formData.dateOfBirth}
-                onChange={(e) => handleChange('dateOfBirth', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+              <DateInput
+                value={formData.dateOfBirth || ''}
+                onChange={(v) => handleChange('dateOfBirth', v)}
+                isClearable
               />
             </div>
 
@@ -266,9 +261,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 onChange={(e) => handleChange('address', e.target.value)}
                 maxLength={500}
                 rows={3}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.address ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.address ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('patients.addressPlaceholder')}
               />
               {errors.address && (
@@ -293,8 +287,8 @@ export default function PatientForm({ patientId }: PatientFormProps) {
                 {createMutation.isPending || updateMutation.isPending
                   ? t('common.saving')
                   : patientId
-                  ? t('common.saveChanges')
-                  : t('patients.addPatientBtn')}
+                    ? t('common.saveChanges')
+                    : t('patients.addPatientBtn')}
               </button>
             </div>
           </form>

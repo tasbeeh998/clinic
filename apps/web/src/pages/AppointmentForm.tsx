@@ -4,6 +4,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { appointmentsService, CreateAppointmentDto } from '../services/appointments.service';
 import { patientsService } from '../services/patients.service';
 import { useTranslation } from 'react-i18next';
+import DateInput from '../components/DateInput';
+import TimeInput from '../components/TimeInput';
 
 export default function AppointmentForm() {
   const { t } = useTranslation();
@@ -117,9 +119,8 @@ export default function AppointmentForm() {
                 }}
                 onFocus={() => setShowPatientDropdown(true)}
                 placeholder={t('visits.patientSearchPlaceholder')}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.patientId ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.patientId ? 'border-red-500' : 'border-gray-300'
+                  }`}
               />
               {errors.patientId && (
                 <p className="mt-1 text-sm text-red-600">{errors.patientId}</p>
@@ -151,33 +152,28 @@ export default function AppointmentForm() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {t('common.date')} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-              lang="en-GB"
+                <DateInput
                   value={formData.scheduledAt ? formData.scheduledAt.split('T')[0] : ''}
-                  onChange={(e) => {
+                  onChange={(dateStr) => {
                     const time = formData.scheduledAt ? formData.scheduledAt.split('T')[1] || '10:00' : '10:00';
-                    setFormData((prev) => ({ ...prev, scheduledAt: `${e.target.value}T${time}` }));
+                    setFormData((prev) => ({ ...prev, scheduledAt: `${dateStr}T${time}` }));
                   }}
-                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                    errors.scheduledAt ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.scheduledAt ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {t('visits.time')} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="time"
+                <TimeInput
                   value={formData.scheduledAt ? formData.scheduledAt.split('T')[1] || '10:00' : '10:00'}
-                  onChange={(e) => {
+                  onChange={(timeStr) => {
                     const date = formData.scheduledAt ? formData.scheduledAt.split('T')[0] : new Date().toISOString().split('T')[0];
-                    setFormData((prev) => ({ ...prev, scheduledAt: `${date}T${e.target.value}` }));
+                    setFormData((prev) => ({ ...prev, scheduledAt: `${date}T${timeStr}` }));
                   }}
-                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                    errors.scheduledAt ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.scheduledAt ? 'border-red-500' : 'border-gray-300'
+                    }`}
                 />
               </div>
             </div>
@@ -195,9 +191,8 @@ export default function AppointmentForm() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
                 maxLength={1000}
                 rows={3}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.notes ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.notes ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('appointments.notesPlaceholder')}
               />
               {errors.notes && (

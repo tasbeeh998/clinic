@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Printer, Calendar } from 'lucide-react';
 import { reportsService } from '../services/reports.service';
 import { formatDateTime } from '../utils/dateFormat';
+import DateInput from '../components/DateInput';
 
 const PAYMENT_METHOD_KEYS: Record<string, string> = {
   CASH: 'payments.methodCash',
@@ -41,11 +42,9 @@ export default function DailyClosingPage() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Calendar size={16} strokeWidth={1.75} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] pointer-events-none" />
-            <input
-              type="date"
-              lang="en-GB"
+            <DateInput
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={setDate}
               className="ui-input pr-10 w-auto"
             />
           </div>

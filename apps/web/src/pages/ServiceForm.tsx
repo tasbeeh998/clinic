@@ -103,7 +103,7 @@ export default function ServiceForm() {
   const handlePriceChange = (value: string) => {
     const price = parseFloat(value);
     setFormData((prev) => ({ ...prev, currentPrice: isNaN(price) ? 0 : price }));
-    
+
     // Show warning if editing and price is being changed
     if (isEdit && serviceData && price !== parseFloat(serviceData.currentPrice)) {
       setShowPriceWarning(true);
@@ -161,9 +161,8 @@ export default function ServiceForm() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.name ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('services.namePlaceholder')}
               />
               {errors.name && (
@@ -196,9 +195,8 @@ export default function ServiceForm() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                 maxLength={1000}
                 rows={3}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.description ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.description ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder={t('services.descriptionPlaceholder')}
               />
               {errors.description && (
@@ -211,21 +209,18 @@ export default function ServiceForm() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('services.price')} <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
+              <div className="flex items-center gap-2">
                 <input
                   type="number"
                   step="0.001"
                   min="0"
                   value={formData.currentPrice}
                   onChange={(e) => handlePriceChange(e.target.value)}
-                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                    errors.currentPrice ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.currentPrice ? 'border-red-500' : 'border-gray-300'
+                    }`}
                   placeholder="0.000"
                 />
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                  {t('common.currency')}
-                </span>
+                <span className="text-gray-500 shrink-0">{t('common.currency')}</span>
               </div>
               {errors.currentPrice && (
                 <p className="mt-1 text-sm text-red-600">{errors.currentPrice}</p>
@@ -270,8 +265,8 @@ export default function ServiceForm() {
                 {createMutation.isPending || updateMutation.isPending
                   ? t('common.saving')
                   : isEdit
-                  ? t('common.saveChanges')
-                  : t('services.saveService')}
+                    ? t('common.saveChanges')
+                    : t('services.saveService')}
               </button>
             </div>
           </form>
@@ -280,3 +275,4 @@ export default function ServiceForm() {
     </div>
   );
 }
+

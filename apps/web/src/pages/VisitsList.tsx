@@ -5,6 +5,7 @@ import { Search, Eye, ReceiptText, CheckCircle2, Plus } from 'lucide-react';
 import { visitsService, VisitStatus } from '../services/visits.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate, formatTime } from '../utils/dateFormat';
+import DateInput from '../components/DateInput';
 
 function statusBadgeStyle(status: VisitStatus) {
   switch (status) {
@@ -116,12 +117,11 @@ export default function VisitsList() {
             className="ui-input pr-10"
           />
         </div>
-        <input
-          type="date"
-              lang="en-GB"
+        <DateInput
           value={dateFilter}
-          onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+          onChange={(v) => { setDateFilter(v); setPage(1); }}
           className="ui-input w-auto"
+          isClearable
         />
         <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="ui-input w-auto">
           <option value="">{t('visits.allTypes')}</option>
