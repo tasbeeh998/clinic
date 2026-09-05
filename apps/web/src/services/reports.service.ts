@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export interface ReportsSummary {
   range: { from: string; to: string };
@@ -96,7 +97,7 @@ export interface DailyClosingReport {
 
 class ReportsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -160,9 +161,6 @@ class ReportsService {
     return this.get<DailyClosingReport>(`/reports/daily-closing${qs}`);
   }
 
-  // Downloads the PDF/Excel export as a real file — reuses the same
-  // Authorization header as every other authenticated request (the export
-  // routes are protected, so a plain <a href> link won't carry the token).
   async downloadExport(format: 'pdf' | 'excel', from?: string, to?: string): Promise<void> {
     const lang = localStorage.getItem('clinic_language') === 'ar' ? 'ar' : 'en';
     const params = new URLSearchParams();
@@ -190,4 +188,3 @@ class ReportsService {
 }
 
 export const reportsService = new ReportsService();
-

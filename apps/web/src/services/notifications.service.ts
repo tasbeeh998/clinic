@@ -1,4 +1,5 @@
 import { apiBaseUrl } from '../config/api';
+import { getAccessToken } from '../config/auth-token';
 
 export interface AppNotification {
   id: string;
@@ -12,7 +13,7 @@ export interface AppNotification {
 
 class NotificationsService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('accessToken');
+    const token = getAccessToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
