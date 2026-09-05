@@ -56,7 +56,7 @@ export default function AppointmentDetail() {
   };
 
   const handleStatusChange = (newStatus: string) => {
-    updateStatusMutation.mutate({ id: id!, data: { status: newStatus as any } });
+    updateStatusMutation.mutate({ id: id!, data: { status: newStatus as UpdateStatusDto['status'] } });
   };
 
   const handleCancel = () => {

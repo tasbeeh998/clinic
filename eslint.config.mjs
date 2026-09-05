@@ -17,10 +17,21 @@ export default [
         ecmaFeatures: { jsx: true },
       },
       globals: {
+        // Node.js/Bundlr globals (for API)
         console: 'readonly',
-        document: 'readonly',
         process: 'readonly',
+        // Browser globals (for Web)
+        document: 'readonly',
         window: 'readonly',
+        fetch: 'readonly',
+        localStorage: 'readonly',
+        URLSearchParams: 'readonly',
+        // React globals
+        React: 'readonly',
+        // DOM type globals
+        HTMLDivElement: 'readonly',
+        MouseEvent: 'readonly',
+        Node: 'readonly',
       },
     },
     plugins: {

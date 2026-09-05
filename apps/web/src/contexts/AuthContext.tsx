@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         credentials: 'include',
       });
-    } catch (error) {
+    } catch {
       // Ignore logout errors
     } finally {
       setUser(null);
