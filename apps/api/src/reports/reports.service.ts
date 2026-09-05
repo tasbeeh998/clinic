@@ -12,13 +12,23 @@ function endOfDay(d: Date): Date {
   return x;
 }
 
+// Helper to parse date string to UTC to avoid timezone issues
+function parseDate(dateStr: string): Date {
+  // If it's already a date string like "2025-09-06", parse it as UTC
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  }
+  return new Date(dateStr);
+}
+
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
   private resolveRange(from?: string, to?: string) {
-    const toDate = to ? endOfDay(new Date(to)) : endOfDay(new Date());
-    const fromDate = from ? startOfDay(new Date(from)) : startOfDay(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+    const toDate = to ? endOfDay(parseDate(to)) : endOfDay(new Date());
+    const fromDate = from ? startOfDay(parseDate(from)) : startOfDay(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
     return { fromDate, toDate };
   }
 

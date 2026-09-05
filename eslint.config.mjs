@@ -20,16 +20,28 @@ export default [
         // Node.js/Bundlr globals (for API)
         console: 'readonly',
         process: 'readonly',
+        Buffer: 'readonly',
+
         // Browser globals (for Web)
         document: 'readonly',
         window: 'readonly',
         fetch: 'readonly',
         localStorage: 'readonly',
+        sessionStorage: 'readonly',
         URLSearchParams: 'readonly',
+        FormData: 'readonly',
+        Blob: 'readonly',
+        navigator: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+
         // React globals
         React: 'readonly',
+
         // DOM type globals
         HTMLDivElement: 'readonly',
+        HTMLInputElement: 'readonly',
+        HTMLButtonElement: 'readonly',
         MouseEvent: 'readonly',
         Node: 'readonly',
       },

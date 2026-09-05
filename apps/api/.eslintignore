@@ -1,5 +1,0 @@
-dist/
-node_modules/
-*.spec.ts
-*.test.ts
-test-env-setup.ts

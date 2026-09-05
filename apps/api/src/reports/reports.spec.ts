@@ -303,7 +303,8 @@ describe('Reports Module Tests (E2E)', () => {
           amount: 40,
           method: 'KNET',
           status: 'RECORDED',
-          paymentDate: new Date(),
+          // Use UTC to ensure it falls within the report range regardless of timezone
+          paymentDate: new Date(`${today}T12:00:00.000Z`),
           recordedById: adminUserId,
         },
       });

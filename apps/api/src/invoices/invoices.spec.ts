@@ -947,6 +947,31 @@ describe('Invoices Module Tests (E2E)', () => {
       expect(allocationsB.length).toBe(1);
       expect(Number(allocationsB[0].amount)).toBe(30);
       expect(allocationsB[0].payment.status).toBe('RECORDED');
+
+      // A later correction can be cheaper than the source payment. Its
+      // carried credit must be capped at its own total, never negative.
+      await request(app.getHttpServer())
+        .patch(`/api/invoices/${replacementB.body.id}/status`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ status: 'ISSUED' })
+        .expect(200);
+
+      const replacementC = await request(app.getHttpServer())
+        .post(`/api/invoices/${replacementB.body.id}/replacement`)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ items: [{ serviceId: testServiceAId, quantity: 1, unitPrice: 20 }] })
+        .expect(201);
+
+      expect(Number(replacementC.body.total)).toBe(20);
+      expect(Number(replacementC.body.paid)).toBe(20);
+      expect(Number(replacementC.body.remaining)).toBe(0);
+      expect(replacementC.body.paymentStatus).toBe('PAID');
+
+      const allocationsC = await prisma.paymentAllocation.findMany({
+        where: { invoiceId: replacementC.body.id },
+      });
+      expect(allocationsC).toHaveLength(1);
+      expect(Number(allocationsC[0].amount)).toBe(20);
     });
 
     it('should keep unpaid status when adding charge to unpaid invoice', async () => {

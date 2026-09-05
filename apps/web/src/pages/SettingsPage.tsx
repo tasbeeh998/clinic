@@ -586,7 +586,7 @@ function SystemInfoSection() {
           <div className="font-bold text-[#1F2430] text-sm">{health?.data?.timestamp ? formatDateTime(health.data.timestamp) : '—'}</div>
         </div>
       </div>
-      <p className="text-xs text-[#94A3B8] mt-4">مساحة التخزين وحالة النسخ الاحتياطي غير متاحة حاليًا لعدم وجود نظام نسخ احتياطي مفعّل بعد.</p>
+      <p className="text-xs text-[#94A3B8] mt-4">تفاصيل مساحة التخزين والنسخ الاحتياطي متاحة من قسم النسخ الاحتياطي والاستعادة.</p>
     </div>
   );
 }
@@ -630,7 +630,7 @@ function SystemOverviewGrid() {
         </div>
         <div className="p-4 rounded-xl border border-[#E2E8F0]">
           <div className="text-xs text-[#94A3B8] mb-1">النسخ الاحتياطي</div>
-          <div className="font-bold text-[#94A3B8] text-sm">غير مفعّل بعد</div>
+          <div className="font-bold text-[#94A3B8] text-sm">راجع قسم النسخ الاحتياطي</div>
         </div>
       </div>
     </div>
