@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { servicesService, CreateServiceDto, UpdateServiceDto } from '../services/services.service';
+import { useTranslation } from 'react-i18next';
 
 export default function ServiceForm() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
@@ -44,7 +46,7 @@ export default function ServiceForm() {
       navigate('/services');
     },
     onError: (error: Error) => {
-      setErrors({ general: error.message || 'فشل في إنشاء الخدمة' });
+      setErrors({ general: error.message || t('services.createError') });
     },
   });
 
@@ -55,7 +57,7 @@ export default function ServiceForm() {
       navigate('/services');
     },
     onError: (error: Error) => {
-      setErrors({ general: error.message || 'فشل في تحديث الخدمة' });
+      setErrors({ general: error.message || t('services.updateError') });
     },
   });
 
@@ -63,21 +65,21 @@ export default function ServiceForm() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.name || formData.name.trim().length === 0) {
-      newErrors.name = 'اسم الخدمة مطلوب';
+      newErrors.name = t('services.nameRequired');
     }
 
     if (formData.name && formData.name.length > 255) {
-      newErrors.name = 'اسم الخدمة يجب أن لا يتجاوز 255 حرف';
+      newErrors.name = t('services.nameTooLong');
     }
 
     if (formData.currentPrice === undefined || formData.currentPrice === null) {
-      newErrors.currentPrice = 'السعر مطلوب';
+      newErrors.currentPrice = t('services.priceRequired');
     } else if (formData.currentPrice < 0) {
-      newErrors.currentPrice = 'السعر يجب أن يكون أكبر من أو يساوي صفر';
+      newErrors.currentPrice = t('services.priceInvalid');
     }
 
     if (formData.description && formData.description.length > 1000) {
-      newErrors.description = 'الوصف يجب أن لا يتجاوز 1000 حرف';
+      newErrors.description = t('services.descriptionTooLong');
     }
 
     setErrors(newErrors);
@@ -101,7 +103,7 @@ export default function ServiceForm() {
   const handlePriceChange = (value: string) => {
     const price = parseFloat(value);
     setFormData((prev) => ({ ...prev, currentPrice: isNaN(price) ? 0 : price }));
-    
+
     // Show warning if editing and price is being changed
     if (isEdit && serviceData && price !== parseFloat(serviceData.currentPrice)) {
       setShowPriceWarning(true);
@@ -114,7 +116,7 @@ export default function ServiceForm() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
@@ -126,18 +128,18 @@ export default function ServiceForm() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-[#111844]">
-            {isEdit ? 'تعديل الخدمة' : 'خدمة جديدة'}
+            {isEdit ? t('services.editService') : t('services.newService')}
           </h1>
           <button
             onClick={handleCancel}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
           >
-            إلغاء
+            {t('common.cancel')}
           </button>
         </div>
 
@@ -153,16 +155,15 @@ export default function ServiceForm() {
             {/* Service Name */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                اسم الخدمة <span className="text-red-500">*</span>
+                {t('services.name')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="مثال: كشف عام"
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.name ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                placeholder={t('services.namePlaceholder')}
               />
               {errors.name && (
                 <p className="mt-1 text-sm text-red-600">{errors.name}</p>
@@ -172,7 +173,7 @@ export default function ServiceForm() {
             {/* Code */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                كود الخدمة
+                {t('services.code')}
               </label>
               <input
                 type="text"
@@ -180,24 +181,23 @@ export default function ServiceForm() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value }))}
                 maxLength={50}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
-                placeholder="مثال: OBA0001 (يظهر في فاتورة PDF - اختياري)"
+                placeholder={t('services.codePlaceholder')}
               />
             </div>
 
             {/* Description */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                الوصف
+                {t('services.description')}
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                 maxLength={1000}
                 rows={3}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                  errors.description ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="وصف الخدمة (اختياري)"
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.description ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                placeholder={t('services.descriptionPlaceholder')}
               />
               {errors.description && (
                 <p className="mt-1 text-sm text-red-600">{errors.description}</p>
@@ -207,30 +207,27 @@ export default function ServiceForm() {
             {/* Price */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                السعر <span className="text-red-500">*</span>
+                {t('services.price')} <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
+              <div className="flex items-center gap-2">
                 <input
                   type="number"
                   step="0.001"
                   min="0"
                   value={formData.currentPrice}
                   onChange={(e) => handlePriceChange(e.target.value)}
-                  className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
-                    errors.currentPrice ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                  className={`flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.currentPrice ? 'border-red-500' : 'border-gray-300'
+                    }`}
                   placeholder="0.000"
                 />
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                  د.ك
-                </span>
+                <span className="text-gray-500 shrink-0">{t('common.currency')}</span>
               </div>
               {errors.currentPrice && (
                 <p className="mt-1 text-sm text-red-600">{errors.currentPrice}</p>
               )}
               {showPriceWarning && (
                 <p className="mt-2 text-sm text-yellow-600 bg-yellow-50 px-3 py-2 rounded">
-                  ⚠️ تغيير سعر الخدمة سيؤثر على الفواتير الجديدة فقط، ولن يغير الفواتير السابقة.
+                  {t('services.priceChangeWarning')}
                 </p>
               )}
             </div>
@@ -244,10 +241,10 @@ export default function ServiceForm() {
                   onChange={(e) => setFormData((prev) => ({ ...prev, isActive: e.target.checked }))}
                   className="w-4 h-4 text-[#111844] border-gray-300 rounded focus:ring-[#111844]"
                 />
-                <span className="text-sm font-medium text-gray-700">نشط</span>
+                <span className="text-sm font-medium text-gray-700">{t('common.active')}</span>
               </label>
               <p className="mt-1 text-sm text-gray-500">
-                الخدمات غير النشطة لن تكون متاحة للفواتير الجديدة
+                {t('services.inactiveHint')}
               </p>
             </div>
 
@@ -258,7 +255,7 @@ export default function ServiceForm() {
                 onClick={handleCancel}
                 className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
@@ -266,10 +263,10 @@ export default function ServiceForm() {
                 className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {createMutation.isPending || updateMutation.isPending
-                  ? 'جاري الحفظ...'
+                  ? t('common.saving')
                   : isEdit
-                  ? 'حفظ التغييرات'
-                  : 'حفظ الخدمة'}
+                    ? t('common.saveChanges')
+                    : t('services.saveService')}
               </button>
             </div>
           </form>
@@ -278,3 +275,4 @@ export default function ServiceForm() {
     </div>
   );
 }
+

@@ -1,5 +1,5 @@
 import { apiBaseUrl } from '../config/api';
-import { getAccessToken, setAccessToken as setInMemoryAccessToken } from '../config/auth-token';
+import { getAccessToken } from '../config/auth-token';
 
 export type PaymentMethod = 'CASH' | 'VISA' | 'KNET' | 'OTHER';
 
@@ -33,14 +33,6 @@ class PaymentsService {
     };
   }
 
-  setAccessToken(token: string) {
-    setInMemoryAccessToken(token);
-  }
-
-  clearAccessToken() {
-    setInMemoryAccessToken(null);
-  }
-
   async getPaymentsForInvoice(invoiceId: string): Promise<Payment[]> {
     const response = await fetch(`${apiBaseUrl}/payments?invoiceId=${invoiceId}`, {
       headers: this.getAuthHeaders(),
@@ -66,19 +58,6 @@ class PaymentsService {
     }
 
     return response.json();
-  }
-
-  async deletePayment(id: string): Promise<void> {
-    // This method is deprecated - use reversePayment instead
-    const response = await fetch(`${apiBaseUrl}/payments/${id}`, {
-      method: 'DELETE',
-      headers: this.getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to remove payment');
-    }
   }
 
   async reversePayment(id: string, reversalNotes?: string): Promise<{ id: string; reversed: boolean }> {

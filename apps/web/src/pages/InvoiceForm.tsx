@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { visitsService } from '../services/visits.service';
 import { servicesService } from '../services/services.service';
-import { invoicesService } from '../services/invoices.service';
+import { invoicesService, CreateInvoiceDto } from '../services/invoices.service';
+import { useTranslation } from 'react-i18next';
 
 interface LineItem {
   serviceId: string;
@@ -18,6 +19,7 @@ interface AdditionalCharge {
 }
 
 export default function InvoiceForm() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const visitId = searchParams.get('visitId') || '';
@@ -40,7 +42,7 @@ export default function InvoiceForm() {
   const services = servicesData?.data || [];
 
   const createMutation = useMutation({
-    mutationFn: invoicesService.createInvoice,
+    mutationFn: (data: CreateInvoiceDto) => invoicesService.createInvoice(data),
     onSuccess: (invoice) => {
       navigate(`/invoices/${invoice.id}`);
     },
@@ -98,21 +100,21 @@ export default function InvoiceForm() {
         // own default price — omitting it otherwise keeps existing behavior
         // (backend falls back to the service's currentPrice automatically).
         ...(i.unitPrice !== null &&
-        i.unitPrice !== parseFloat(services.find((s) => s.id === i.serviceId)?.currentPrice || '0')
+          i.unitPrice !== parseFloat(services.find((s) => s.id === i.serviceId)?.currentPrice || '0')
           ? { unitPrice: i.unitPrice }
           : {}),
       }));
     if (validItems.length === 0) {
-      setError('أضف خدمة واحدة على الأقل');
+      setError(t('invoices.addOneServiceError'));
       return;
     }
     if (!visitId) {
-      setError('لا يمكن إنشاء فاتورة بدون زيارة مرتبطة');
+      setError(t('invoices.noLinkedVisitError'));
       return;
     }
 
-    createMutation.mutate({ 
-      visitId, 
+    createMutation.mutate({
+      visitId,
       items: validItems,
       additionalCharges: additionalCharges.length > 0 ? additionalCharges : undefined,
     });
@@ -134,10 +136,10 @@ export default function InvoiceForm() {
 
   if (!visitId) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            لا يمكن إنشاء فاتورة بدون تحديد الزيارة. الرجاء البدء من صفحة الزيارة.
+            {t('invoices.mustStartFromVisit')}
           </div>
         </div>
       </div>
@@ -146,7 +148,7 @@ export default function InvoiceForm() {
 
   if (visitLoading || servicesLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse h-8 bg-gray-200 rounded w-1/3"></div>
         </div>
@@ -155,13 +157,13 @@ export default function InvoiceForm() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8 max-w-2xl">
-        <h1 className="text-3xl font-bold text-[#111844] mb-6">فاتورة جديدة</h1>
+        <h1 className="text-3xl font-bold text-[#111844] mb-6">{t('invoices.newInvoice')}</h1>
 
         {visit && (
           <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-            <div className="text-sm text-gray-500">المريض</div>
+            <div className="text-sm text-gray-500">{t('visits.patient')}</div>
             <div className="text-lg font-medium text-gray-900">{visit.patient.fullNameAr}</div>
           </div>
         )}
@@ -184,10 +186,10 @@ export default function InvoiceForm() {
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
                     required
                   >
-                    <option value="">اختر الخدمة...</option>
+                    <option value="">{t('invoices.chooseService')}</option>
                     {services.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} — {parseFloat(s.currentPrice).toFixed(3)} د.ك
+                        {s.name} — {parseFloat(s.currentPrice).toFixed(3)} {t('common.currency')}
                       </option>
                     ))}
                   </select>
@@ -205,12 +207,12 @@ export default function InvoiceForm() {
                     value={item.unitPrice ?? ''}
                     onChange={(e) => updateLine(index, 'unitPrice', e.target.value === '' ? null : parseFloat(e.target.value))}
                     disabled={!item.serviceId}
-                    placeholder="السعر"
+                    placeholder={t('services.price')}
                     className="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    title="سعر هذه الفاتورة فقط - لن يغيّر السعر الافتراضي للخدمة"
+                    title={t('invoices.priceOverrideHint')}
                   />
                   <div className="w-24 pt-2 text-gray-700 text-sm">
-                    {service && item.unitPrice !== null ? (item.unitPrice * item.quantity).toFixed(3) : '0.000'} د.ك
+                    {service && item.unitPrice !== null ? (item.unitPrice * item.quantity).toFixed(3) : '0.000'} {t('common.currency')}
                   </div>
                   {items.length > 1 && (
                     <button
@@ -218,7 +220,7 @@ export default function InvoiceForm() {
                       onClick={() => removeLine(index)}
                       className="text-[#C4362B] hover:text-[#a32b22] px-2"
                     >
-                      حذف
+                      {t('common.delete')}
                     </button>
                   )}
                 </div>
@@ -231,12 +233,12 @@ export default function InvoiceForm() {
             onClick={addLine}
             className="text-[#4B5694] hover:text-[#111844] text-sm mb-6"
           >
-            + إضافة خدمة أخرى
+            + {t('invoices.addAnotherService')}
           </button>
 
           {/* Additional Charges Section */}
           <div className="border-t border-gray-200 pt-4 mb-6">
-            <h3 className="text-lg font-bold text-[#111844] mb-4">رسوم إضافية</h3>
+            <h3 className="text-lg font-bold text-[#111844] mb-4">{t('invoices.additionalCharges')}</h3>
             {additionalCharges.map((charge, index) => (
               <div key={index} className="flex gap-3 items-start mb-3 bg-gray-50 p-3 rounded">
                 <select
@@ -244,8 +246,8 @@ export default function InvoiceForm() {
                   onChange={(e) => updateCharge(index, 'chargeType', e.target.value as 'PERCENTAGE' | 'FIXED')}
                   className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
                 >
-                  <option value="FIXED">مبلغ ثابت</option>
-                  <option value="PERCENTAGE">نسبة مئوية</option>
+                  <option value="FIXED">{t('invoices.chargeTypeFixed')}</option>
+                  <option value="PERCENTAGE">{t('invoices.chargeTypePercentage')}</option>
                 </select>
                 <input
                   type="number"
@@ -253,20 +255,20 @@ export default function InvoiceForm() {
                   step="0.001"
                   value={charge.chargeValue}
                   onChange={(e) => updateCharge(index, 'chargeValue', parseFloat(e.target.value) || 0)}
-                  placeholder={charge.chargeType === 'PERCENTAGE' ? 'النسبة' : 'المبلغ'}
+                  placeholder={charge.chargeType === 'PERCENTAGE' ? t('invoices.percentagePlaceholder') : t('invoices.amountPlaceholder')}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
                 />
                 <input
                   type="text"
                   value={charge.description}
                   onChange={(e) => updateCharge(index, 'description', e.target.value)}
-                  placeholder="الوصف"
+                  placeholder={t('services.description')}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
                 />
                 <div className="w-24 pt-2 text-gray-700 text-sm">
-                  {charge.chargeType === 'PERCENTAGE' 
-                    ? `${((subtotal * charge.chargeValue) / 100).toFixed(3)} د.ك`
-                    : `${charge.chargeValue.toFixed(3)} د.ك`
+                  {charge.chargeType === 'PERCENTAGE'
+                    ? `${((subtotal * charge.chargeValue) / 100).toFixed(3)} ${t('common.currency')}`
+                    : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`
                   }
                 </div>
                 {additionalCharges.length > 1 && (
@@ -275,7 +277,7 @@ export default function InvoiceForm() {
                     onClick={() => removeCharge(index)}
                     className="text-[#C4362B] hover:text-[#a32b22] px-2"
                   >
-                    حذف
+                    {t('common.delete')}
                   </button>
                 )}
               </div>
@@ -285,32 +287,32 @@ export default function InvoiceForm() {
               onClick={addCharge}
               className="text-[#4B5694] hover:text-[#111844] text-sm"
             >
-              + إضافة رسوم إضافية
+              + {t('invoices.addCharge')}
             </button>
           </div>
 
           <div className="border-t border-gray-200 pt-4 space-y-2 mb-6">
             <div className="flex justify-between items-center">
-              <span className="text-gray-600">المجموع الفرعي</span>
-              <span className="text-gray-900">{subtotal.toFixed(3)} د.ك</span>
+              <span className="text-gray-600">{t('invoices.subtotal')}</span>
+              <span className="text-gray-900">{subtotal.toFixed(3)} {t('common.currency')}</span>
             </div>
             {additionalCharges.map((charge, index) => (
               <div key={index} className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">
-                  {charge.description || (charge.chargeType === 'PERCENTAGE' ? 'رسوم نسبة' : 'رسوم ثابتة')}
-                  ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : `${charge.chargeValue.toFixed(3)} د.ك`})
+                  {charge.description || (charge.chargeType === 'PERCENTAGE' ? t('invoices.percentageCharge') : t('invoices.fixedCharge'))}
+                  ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`})
                 </span>
                 <span className="text-gray-900">
-                  {charge.chargeType === 'PERCENTAGE' 
+                  {charge.chargeType === 'PERCENTAGE'
                     ? ((subtotal * charge.chargeValue) / 100).toFixed(3)
                     : charge.chargeValue.toFixed(3)
-                  } د.ك
+                  } {t('common.currency')}
                 </span>
               </div>
             ))}
             <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
-              <span className="text-lg font-bold text-[#111844]">الإجمالي</span>
-              <span className="text-lg font-bold text-[#111844]">{total.toFixed(3)} د.ك</span>
+              <span className="text-lg font-bold text-[#111844]">{t('invoices.total')}</span>
+              <span className="text-lg font-bold text-[#111844]">{total.toFixed(3)} {t('common.currency')}</span>
             </div>
           </div>
 
@@ -320,14 +322,14 @@ export default function InvoiceForm() {
               disabled={createMutation.isPending}
               className="flex-1 px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50"
             >
-              {createMutation.isPending ? 'جارٍ الإنشاء...' : 'إنشاء الفاتورة'}
+              {createMutation.isPending ? t('invoices.creating') : t('invoices.createInvoice')}
             </button>
             <button
               type="button"
               onClick={() => navigate(-1)}
               className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
             >
-              إلغاء
+              {t('common.cancel')}
             </button>
           </div>
         </form>

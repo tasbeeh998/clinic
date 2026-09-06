@@ -4,15 +4,13 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { TrendingUp, Wallet, AlertCircle, ReceiptText, ClipboardList, UsersRound, CalendarDays } from 'lucide-react';
+import { TrendingUp, Wallet, AlertCircle, ReceiptText, ClipboardList, UsersRound, CalendarDays, FileSpreadsheet, FileText, ClipboardCheck } from 'lucide-react';
 import { reportsService } from '../services/reports.service';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import DateInput from '../components/DateInput';
 
 const COLORS = ['#102F63', '#173B78', '#4B5694', '#8991A6', '#C4362B', '#C98200'];
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = { CASH: 'كاش', VISA: 'فيزا', KNET: 'كي نت', OTHER: 'أخرى' };
-const PAYMENT_STATUS_LABELS: Record<string, string> = { UNPAID: 'غير مدفوعة', PARTIALLY_PAID: 'مدفوعة جزئيًا', PAID: 'مدفوعة بالكامل' };
-const VISIT_TYPE_LABELS: Record<string, string> = { CHECKUP: 'كشف', FOLLOW_UP: 'متابعة', OTHER: 'أخرى' };
-const APPT_STATUS_LABELS: Record<string, string> = { BOOKED: 'محجوز', CONFIRMED: 'مؤكد', DONE: 'مكتمل', CANCELLED: 'ملغي', NO_SHOW: 'لم يحضر' };
 
 function todayMinus(days: number): string {
   const d = new Date();
@@ -38,8 +36,27 @@ function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof TrendingUp
 }
 
 export default function ReportsPage() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const PAYMENT_METHOD_LABELS: Record<string, string> = {
+    CASH: t('payments.methodCash'), VISA: t('payments.methodVisa'), KNET: t('payments.methodKnet'), OTHER: t('payments.methodOther'),
+  };
+  const PAYMENT_STATUS_LABELS: Record<string, string> = {
+    UNPAID: t('invoices.unpaid'), PARTIALLY_PAID: t('invoices.partiallyPaid'), PAID: t('invoices.paidInFull'),
+  };
+  const VISIT_TYPE_LABELS: Record<string, string> = {
+    CHECKUP: t('visits.typeCheckup'), FOLLOW_UP: t('visits.typeFollowUp'), OTHER: t('visits.typeOther'),
+  };
+  const APPT_STATUS_LABELS: Record<string, string> = {
+    BOOKED: t('appointments.statusBooked'), CONFIRMED: t('appointments.statusConfirmed'), DONE: t('appointments.statusDone'),
+    CANCELLED: t('appointments.statusCancelled'), NO_SHOW: t('appointments.statusNoShow'),
+  };
+
   const [from, setFrom] = useState(todayMinus(29));
   const [to, setTo] = useState(today());
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const summary = useQuery({ queryKey: ['reports-summary', from, to], queryFn: () => reportsService.getSummary(from, to) });
   const revenueTimeseries = useQuery({ queryKey: ['reports-revenue-ts', from, to], queryFn: () => reportsService.getRevenueTimeseries(from, to) });
@@ -50,37 +67,82 @@ export default function ReportsPage() {
   const appointmentStatus = useQuery({ queryKey: ['reports-appt-status', from, to], queryFn: () => reportsService.getAppointmentStatus(from, to) });
   const outstanding = useQuery({ queryKey: ['reports-outstanding'], queryFn: () => reportsService.getOutstandingInvoices(1, 8) });
 
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    try {
+      await reportsService.downloadExport('pdf', from, to);
+    } catch (err) {
+      console.error('Failed to export PDF report:', err);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      await reportsService.downloadExport('excel', from, to);
+    } catch (err) {
+      console.error('Failed to export Excel report:', err);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const s = summary.data;
 
   return (
     <div className="page-container">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">التقارير والتحليلات</h1>
-          <p className="text-sm text-[#64748B] mt-1">تحليلات شاملة لأداء العيادة ومؤشرات النمو المالية</p>
+          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.reports')}</h1>
+          <p className="text-sm text-[#64748B] mt-1">{t('reports.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="ui-input w-auto" />
-          <span className="text-[#94A3B8] text-sm">إلى</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="ui-input w-auto" />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => navigate('/reports/daily-closing')}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC]"
+          >
+            <ClipboardCheck size={16} strokeWidth={1.75} />
+            {t('dailyClosing.title')}
+          </button>
+          <DateInput value={from} onChange={setFrom} className="ui-input w-auto" />
+          <span className="text-[#94A3B8] text-sm">{t('reports.to')}</span>
+          <DateInput value={to} onChange={setTo} className="ui-input w-auto" />
+          <button
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC] disabled:opacity-50"
+          >
+            <FileText size={16} strokeWidth={1.75} />
+            {exportingPdf ? t('reports.exporting') : t('reports.exportPdf')}
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC] disabled:opacity-50"
+          >
+            <FileSpreadsheet size={16} strokeWidth={1.75} />
+            {exportingExcel ? t('reports.exporting') : t('reports.exportExcel')}
+          </button>
         </div>
       </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-        <KpiCard icon={TrendingUp} label="إجمالي الإيرادات" value={s ? s.totalRevenue.toFixed(0) : '—'} suffix="د.ك" />
-        <KpiCard icon={Wallet} label="إجمالي المدفوعات" value={s ? s.totalCollected.toFixed(0) : '—'} suffix="د.ك" />
-        <KpiCard icon={AlertCircle} label="صافي الأرباح" value={s ? (s.totalRevenue - s.outstandingAmount).toFixed(0) : '—'} suffix="د.ك" />
-        <KpiCard icon={UsersRound} label="عدد المرضى" value={s ? s.newPatients : '—'} />
-        <KpiCard icon={CalendarDays} label="إجمالي المواعيد" value={s ? s.totalAppointments : '—'} />
-        <KpiCard icon={ClipboardList} label="إجمالي الزيارات" value={s ? s.totalVisits : '—'} />
-        <KpiCard icon={ReceiptText} label="الفواتير الصادرة" value={s ? s.totalInvoices : '—'} />
+        <KpiCard icon={TrendingUp} label={t('reports.totalRevenue')} value={s ? s.totalRevenue.toFixed(0) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={Wallet} label={t('reports.totalCollected')} value={s ? s.totalCollected.toFixed(0) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={AlertCircle} label={t('reports.netProfit')} value={s ? (s.totalRevenue - s.outstandingAmount).toFixed(0) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={UsersRound} label={t('reports.newPatientsCount')} value={s ? s.newPatients : '—'} />
+        <KpiCard icon={CalendarDays} label={t('reports.totalAppointments')} value={s ? s.totalAppointments : '—'} />
+        <KpiCard icon={ClipboardList} label={t('reports.totalVisits')} value={s ? s.totalVisits : '—'} />
+        <KpiCard icon={ReceiptText} label={t('reports.issuedInvoices')} value={s ? s.totalInvoices : '—'} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         {/* Revenue chart */}
         <div className="ui-card p-5 lg:col-span-2">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">الإيرادات والمدفوعات</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.revenueAndCollections')}</h2>
           {revenueTimeseries.isLoading ? (
             <div className="ui-skeleton h-64 rounded-lg" />
           ) : revenueTimeseries.data && revenueTimeseries.data.length > 0 ? (
@@ -91,18 +153,18 @@ export default function ReportsPage() {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="revenue" name="الإيرادات" stroke="#102F63" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="collected" name="المدفوعات" stroke="#4B5694" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="revenue" name={t('reports.revenue')} stroke="#102F63" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="collected" name={t('reports.collections')} stroke="#4B5694" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="ui-empty-state">لا توجد بيانات في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noDataInPeriod')}</div>
           )}
         </div>
 
         {/* Payment methods donut */}
         <div className="ui-card p-5">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">طرق الدفع</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.paymentMethods')}</h2>
           {paymentMethods.isLoading ? (
             <div className="ui-skeleton h-64 rounded-lg" />
           ) : paymentMethods.data && paymentMethods.data.length > 0 ? (
@@ -112,7 +174,7 @@ export default function ReportsPage() {
                   <Pie data={paymentMethods.data} dataKey="amount" nameKey="method" innerRadius={45} outerRadius={75}>
                     {paymentMethods.data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => `${v.toFixed(2)} د.ك`} />
+                  <Tooltip formatter={(v: number) => `${v.toFixed(2)} ${t('common.currency')}`} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-1.5 mt-2">
@@ -122,13 +184,13 @@ export default function ReportsPage() {
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
                       {PAYMENT_METHOD_LABELS[row.method] || row.method}
                     </span>
-                    <span className="font-medium text-[#1F2430]">{row.amount.toFixed(2)} د.ك</span>
+                    <span className="font-medium text-[#1F2430]">{row.amount.toFixed(2)} {t('common.currency')}</span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <div className="ui-empty-state">لا توجد مدفوعات في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noPaymentsInPeriod')}</div>
           )}
         </div>
       </div>
@@ -136,16 +198,16 @@ export default function ReportsPage() {
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         {/* Service usage table */}
         <div className="ui-card p-5 lg:col-span-2 overflow-x-auto">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">أعلى الخدمات من حيث الإيرادات</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.topServicesByRevenue')}</h2>
           {serviceUsage.isLoading ? (
             <div className="ui-skeleton h-40 rounded-lg" />
           ) : serviceUsage.data && serviceUsage.data.length > 0 ? (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[#94A3B8] text-xs border-b border-[#E2E8F0]">
-                  <th className="text-right py-2 font-medium">الخدمة</th>
-                  <th className="text-center py-2 font-medium">عدد المرات</th>
-                  <th className="text-left py-2 font-medium">الإيرادات (د.ك)</th>
+                  <th className="text-right py-2 font-medium">{t('invoices.service')}</th>
+                  <th className="text-center py-2 font-medium">{t('reports.timesUsed')}</th>
+                  <th className="text-left py-2 font-medium">{t('reports.revenue')} ({t('common.currency')})</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,13 +221,13 @@ export default function ReportsPage() {
               </tbody>
             </table>
           ) : (
-            <div className="ui-empty-state">لا توجد بيانات في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noDataInPeriod')}</div>
           )}
         </div>
 
         {/* Invoice status donut */}
         <div className="ui-card p-5">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">توزيع الفواتير حسب الحالة</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.invoicesByStatus')}</h2>
           {invoiceStatus.isLoading ? (
             <div className="ui-skeleton h-48 rounded-lg" />
           ) : invoiceStatus.data && invoiceStatus.data.length > 0 ? (
@@ -191,7 +253,7 @@ export default function ReportsPage() {
               </div>
             </>
           ) : (
-            <div className="ui-empty-state">لا توجد فواتير في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noInvoicesInPeriod')}</div>
           )}
         </div>
       </div>
@@ -199,7 +261,7 @@ export default function ReportsPage() {
       <div className="grid lg:grid-cols-3 gap-5 mb-5">
         {/* Visit types */}
         <div className="ui-card p-5">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">أنواع الزيارات</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.visitTypesTitle')}</h2>
           {visitTypes.data && visitTypes.data.length > 0 ? (
             <div className="space-y-2">
               {visitTypes.data.map((row) => (
@@ -210,13 +272,13 @@ export default function ReportsPage() {
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">لا توجد زيارات في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noVisitsInPeriod')}</div>
           )}
         </div>
 
         {/* Appointment status */}
         <div className="ui-card p-5">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">حالة المواعيد</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.appointmentStatusTitle')}</h2>
           {appointmentStatus.data && appointmentStatus.data.length > 0 ? (
             <div className="space-y-2">
               {appointmentStatus.data.map((row) => (
@@ -227,13 +289,13 @@ export default function ReportsPage() {
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">لا توجد مواعيد في هذه الفترة</div>
+            <div className="ui-empty-state">{t('reports.noAppointmentsInPeriod')}</div>
           )}
         </div>
 
         {/* Outstanding invoices */}
         <div className="ui-card p-5">
-          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">أعلى الفواتير المستحقة</h2>
+          <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.topOutstandingInvoices')}</h2>
           {outstanding.data && outstanding.data.data.length > 0 ? (
             <div className="space-y-2">
               {outstanding.data.data.slice(0, 6).map((row) => (
@@ -242,17 +304,17 @@ export default function ReportsPage() {
                     <div className="text-[#1F2430]">{row.patient.fullNameAr}</div>
                     <div className="text-xs text-[#94A3B8]">{row.invoiceNumber}</div>
                   </div>
-                  <span className="font-medium text-[#C4362B]">{parseFloat(row.remaining).toFixed(2)} د.ك</span>
+                  <span className="font-medium text-[#C4362B]">{parseFloat(row.remaining).toFixed(2)} {t('common.currency')}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">لا توجد مستحقات حاليًا</div>
+            <div className="ui-empty-state">{t('reports.noOutstandingCurrently')}</div>
           )}
         </div>
       </div>
 
-      <p className="text-xs text-[#94A3B8] text-center">جميع التقارير يتم احتسابها بناءً على البيانات الفعلية المسجلة في النظام.</p>
+      <p className="text-xs text-[#94A3B8] text-center">{t('reports.footerNote')}</p>
     </div>
   );
 }

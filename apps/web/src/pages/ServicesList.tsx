@@ -4,16 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, Pencil, Trash2, Plus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { servicesService, Service } from '../services/services.service';
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('ar-KW', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-}
+import { useTranslation } from 'react-i18next';
+import { formatDate } from '../utils/dateFormat';
 
 export default function ServicesList() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
@@ -46,13 +41,13 @@ export default function ServicesList() {
     <div className="page-container">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">الخدمات</h1>
-          <p className="text-sm text-[#64748B] mt-1">إدارة الخدمات والأسعار</p>
+          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.services')}</h1>
+          <p className="text-sm text-[#64748B] mt-1">{t('services.subtitle')}</p>
         </div>
         {isAdmin && (
           <button onClick={() => navigate('/services/new')} className="btn-primary flex items-center gap-2 px-4">
             <Plus size={18} strokeWidth={2} />
-            إضافة خدمة جديدة
+            {t('services.addNew')}
           </button>
         )}
       </div>
@@ -64,7 +59,7 @@ export default function ServicesList() {
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="ابحث باسم الخدمة أو الكود..."
+            placeholder={t('services.searchPlaceholder')}
             className="ui-input pr-10"
           />
         </div>
@@ -77,9 +72,9 @@ export default function ServicesList() {
           }}
           className="ui-input w-auto"
         >
-          <option value="">كل الحالات</option>
-          <option value="true">نشطة</option>
-          <option value="false">معطّلة</option>
+          <option value="">{t('common.allStatuses')}</option>
+          <option value="true">{t('services.statusActive')}</option>
+          <option value="false">{t('services.statusInactive')}</option>
         </select>
       </div>
 
@@ -92,12 +87,12 @@ export default function ServicesList() {
       )}
 
       {error && (
-        <div className="ui-card p-6 text-center text-[#C4362B] text-sm">فشل في تحميل بيانات الخدمات</div>
+        <div className="ui-card p-6 text-center text-[#C4362B] text-sm">{t('services.loadError')}</div>
       )}
 
       {!isLoading && !error && services.length === 0 && (
         <div className="ui-card p-16 text-center">
-          <p className="text-[#64748B]">{search ? 'لا توجد نتائج للبحث' : 'لا توجد بيانات متاحة حاليًا'}</p>
+          <p className="text-[#64748B]">{search ? t('common.noSearchResults') : t('common.noDataAvailable')}</p>
         </div>
       )}
 
@@ -106,11 +101,11 @@ export default function ServicesList() {
           <table className="ui-table">
             <thead>
               <tr>
-                <th>اسم الخدمة</th>
-                <th>كود الخدمة</th>
-                <th>السعر (د.ك)</th>
-                <th>الحالة</th>
-                <th>تاريخ التحديث</th>
+                <th>{t('services.name')}</th>
+                <th>{t('services.code')}</th>
+                <th>{t('services.price')} ({t('common.currency')})</th>
+                <th>{t('common.status')}</th>
+                <th>{t('services.updatedAt')}</th>
                 {isAdmin && <th>الإجراءات</th>}
               </tr>
             </thead>
@@ -132,23 +127,23 @@ export default function ServicesList() {
                           : { background: 'rgba(100,116,139,0.1)', color: 'var(--text-secondary)' }
                       }
                     >
-                      {service.isActive ? 'نشطة' : 'معطّلة'}
+                      {service.isActive ? t('services.statusActive') : t('services.statusInactive')}
                     </span>
                   </td>
-                  <td className="text-[#64748B]">{formatDate(service.updatedAt)}</td>
+                  <td className="text-[#64748B]">{formatDate(service.updatedAt, i18n.language)}</td>
                   {isAdmin && (
                     <td>
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => navigate(`/services/${service.id}/edit`)}
-                          aria-label="تعديل الخدمة"
+                          aria-label={t('services.editService')}
                           className="icon-btn"
                         >
                           <Pencil size={16} strokeWidth={1.75} />
                         </button>
                         <button
                           onClick={() => setConfirmDeactivate(service)}
-                          aria-label={service.isActive ? 'تعطيل الخدمة' : 'تفعيل الخدمة'}
+                          aria-label={service.isActive ? t('services.deactivateService') : t('services.activateService')}
                           className="icon-btn danger"
                         >
                           <Trash2 size={16} strokeWidth={1.75} />
@@ -164,7 +159,12 @@ export default function ServicesList() {
           {meta && (
             <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
               <span className="text-[13px] text-[#64748B]">
-                عرض {(meta.page - 1) * meta.limit + 1} إلى {Math.min(meta.page * meta.limit, meta.total)} من {meta.total} خدمة
+                {t('common.showingRange', {
+                  from: (meta.page - 1) * meta.limit + 1,
+                  to: Math.min(meta.page * meta.limit, meta.total),
+                  total: meta.total,
+                  item: t('services.itemPlural'),
+                })}
               </span>
               {meta.totalPages > 1 && (
                 <div className="flex items-center gap-2">
@@ -173,7 +173,7 @@ export default function ServicesList() {
                     disabled={page === 1}
                     className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
                   >
-                    السابق
+                    {t('common.previous')}
                   </button>
                   <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
                   <button
@@ -181,7 +181,7 @@ export default function ServicesList() {
                     disabled={page === meta.totalPages}
                     className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
                   >
-                    التالي
+                    {t('common.next')}
                   </button>
                 </div>
               )}
@@ -194,25 +194,25 @@ export default function ServicesList() {
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 px-4">
           <div className="ui-card p-6 max-w-sm w-full">
             <h3 className="font-bold text-[#102F63] mb-2">
-              {confirmDeactivate.isActive ? 'تعطيل الخدمة' : 'تفعيل الخدمة'}
+              {confirmDeactivate.isActive ? t('services.deactivateService') : t('services.activateService')}
             </h3>
             <p className="text-sm text-[#64748B] mb-5">
               {confirmDeactivate.isActive
-                ? `هل تريدين تعطيل خدمة "${confirmDeactivate.name}"؟ الفواتير السابقة اللي فيها الخدمة دي لن تتأثر، لكن مش هتظهر كخيار عند إنشاء فاتورة جديدة.`
-                : `هل تريدين إعادة تفعيل خدمة "${confirmDeactivate.name}"؟`}
+                ? t('services.deactivateConfirm', { name: confirmDeactivate.name })
+                : t('services.activateConfirm', { name: confirmDeactivate.name })}
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmDeactivate(null)}
                 className="px-4 py-2 rounded-[10px] border border-[#E2E8F0] text-sm text-[#64748B]"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
               <button
                 onClick={() => handleToggleStatus(confirmDeactivate)}
                 className={confirmDeactivate.isActive ? 'btn-danger-outline px-4 py-2 text-sm' : 'btn-primary px-4 py-2 text-sm'}
               >
-                {confirmDeactivate.isActive ? 'تعطيل' : 'تفعيل'}
+                {confirmDeactivate.isActive ? t('common.deactivate') : t('common.activate')}
               </button>
             </div>
           </div>

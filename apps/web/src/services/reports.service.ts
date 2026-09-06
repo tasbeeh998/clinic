@@ -62,6 +62,39 @@ export interface OutstandingInvoiceRow {
   patient: { fullNameAr: string; civilId: string };
 }
 
+export interface DailyClosingInvoiceRow {
+  id: string;
+  invoiceNumber: string;
+  patientName: string;
+  civilId: string;
+  total: number;
+  paid: number;
+  remaining: number;
+  paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+  issuedAt: string | null;
+}
+
+export interface DailyClosingPaymentRow {
+  id: string;
+  invoiceNumber: string;
+  patientName: string;
+  amount: number;
+  method: 'CASH' | 'VISA' | 'KNET' | 'OTHER';
+  paymentDate: string;
+}
+
+export interface DailyClosingReport {
+  date: string;
+  totalInvoiced: number;
+  totalCollected: number;
+  totalRemaining: number;
+  invoiceCount: number;
+  paymentMethods: Array<{ method: string; amount: number; count: number }>;
+  paymentStatusCounts: { UNPAID: number; PARTIALLY_PAID: number; PAID: number };
+  invoices: DailyClosingInvoiceRow[];
+  payments: DailyClosingPaymentRow[];
+}
+
 class ReportsService {
   private getAuthHeaders() {
     const token = getAccessToken();
@@ -121,6 +154,36 @@ class ReportsService {
     return this.get<{ data: OutstandingInvoiceRow[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(
       `/reports/outstanding-invoices?page=${page}&limit=${limit}`,
     );
+  }
+
+  getDailyClosing(date?: string) {
+    const qs = date ? `?date=${date}` : '';
+    return this.get<DailyClosingReport>(`/reports/daily-closing${qs}`);
+  }
+
+  async downloadExport(format: 'pdf' | 'excel', from?: string, to?: string): Promise<void> {
+    const lang = localStorage.getItem('clinic_language') === 'ar' ? 'ar' : 'en';
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    params.append('lang', lang);
+
+    const response = await fetch(`${apiBaseUrl}/reports/export/${format}?${params.toString()}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to export report');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reports_${from || 'all'}_${to || 'all'}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
 }
 

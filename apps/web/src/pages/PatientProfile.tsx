@@ -3,10 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { patientsService } from '../services/patients.service';
 import { visitsService } from '../services/visits.service';
+import { useTranslation } from 'react-i18next';
+import { formatDate, formatDateTime } from '../utils/dateFormat';
 
 type TabType = 'overview' | 'visits' | 'invoices' | 'payments' | 'appointments';
 
 export default function PatientProfile() {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -27,7 +30,7 @@ export default function PatientProfile() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
@@ -43,10 +46,10 @@ export default function PatientProfile() {
 
   if (error || !patient) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            فشل في تحميل بيانات المريض
+            {t('patients.detailLoadError')}
           </div>
         </div>
       </div>
@@ -54,20 +57,20 @@ export default function PatientProfile() {
   }
 
   const tabs = [
-    { id: 'overview' as TabType, label: 'نظرة عامة' },
-    { id: 'visits' as TabType, label: 'الزيارات' },
-    { id: 'invoices' as TabType, label: 'الفواتير' },
-    { id: 'payments' as TabType, label: 'المدفوعات' },
-    { id: 'appointments' as TabType, label: 'المواعيد' },
+    { id: 'overview' as TabType, label: t('patients.tabOverview') },
+    { id: 'visits' as TabType, label: t('sidebar.visits') },
+    { id: 'invoices' as TabType, label: t('sidebar.invoices') },
+    { id: 'payments' as TabType, label: t('patients.tabPayments') },
+    { id: 'appointments' as TabType, label: t('sidebar.appointments') },
   ];
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+    <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}
         <div className="mb-6 text-sm text-gray-600">
           <button onClick={() => navigate('/patients')} className="hover:text-[#111844]">
-            المرضى
+            {t('sidebar.patients')}
           </button>
           <span className="mx-2">/</span>
           <span className="text-gray-900">{patient.fullNameAr}</span>
@@ -79,7 +82,7 @@ export default function PatientProfile() {
             <div className="bg-white rounded-lg shadow-md p-6 sticky top-8">
               {/* Unpaid Balance Warning */}
               <div className="mb-4 bg-orange-50 border border-orange-200 text-orange-700 px-4 py-2 rounded text-sm">
-                رصيد مستحق: 0 د.ك
+                {t('patients.outstandingBalance')}: 0 {t('common.currency')}
               </div>
 
               {/* Patient Name */}
@@ -87,14 +90,14 @@ export default function PatientProfile() {
 
               {/* Civil ID - Most Dominant */}
               <div className="mb-4">
-                <label className="text-sm text-gray-500 block mb-1">الرقم المدني</label>
+                <label className="text-sm text-gray-500 block mb-1">{t('patients.civilId')}</label>
                 <p className="text-xl font-bold text-[#111844]">{patient.civilId}</p>
               </div>
 
               {/* Phone */}
               {patient.phone && (
                 <div className="mb-4">
-                  <label className="text-sm text-gray-500 block mb-1">الهاتف</label>
+                  <label className="text-sm text-gray-500 block mb-1">{t('patients.phone')}</label>
                   <p className="text-gray-900">{patient.phone}</p>
                 </div>
               )}
@@ -102,9 +105,9 @@ export default function PatientProfile() {
               {/* Date of Birth */}
               {patient.dateOfBirth && (
                 <div className="mb-4">
-                  <label className="text-sm text-gray-500 block mb-1">تاريخ الميلاد</label>
+                  <label className="text-sm text-gray-500 block mb-1">{t('patients.dobLabel')}</label>
                   <p className="text-gray-900">
-                    {new Date(patient.dateOfBirth).toLocaleDateString('ar-KW')}
+                    {formatDate(patient.dateOfBirth, i18n.language)}
                   </p>
                 </div>
               )}
@@ -112,7 +115,7 @@ export default function PatientProfile() {
               {/* Address */}
               {patient.address && (
                 <div className="mb-4">
-                  <label className="text-sm text-gray-500 block mb-1">العنوان</label>
+                  <label className="text-sm text-gray-500 block mb-1">{t('patients.addressLabel')}</label>
                   <p className="text-gray-900">{patient.address}</p>
                 </div>
               )}
@@ -120,7 +123,7 @@ export default function PatientProfile() {
               {/* English Name */}
               {patient.fullNameEn && (
                 <div className="mb-6">
-                  <label className="text-sm text-gray-500 block mb-1">الاسم (إنجليزي)</label>
+                  <label className="text-sm text-gray-500 block mb-1">{t('patients.nameEnLabel')}</label>
                   <p className="text-gray-900">{patient.fullNameEn}</p>
                 </div>
               )}
@@ -132,7 +135,7 @@ export default function PatientProfile() {
                   onClick={() => navigate(`/visits/new?patientId=${patient.id}`)}
                   className="w-full py-3 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors font-medium"
                 >
-                  + زيارة جديدة
+                  + {t('visits.newVisit')}
                 </button>
 
                 {/* Edit Patient */}
@@ -140,14 +143,14 @@ export default function PatientProfile() {
                   onClick={() => navigate(`/patients/${patient.id}/edit`)}
                   className="w-full py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
                 >
-                  تعديل البيانات
+                  {t('patients.editData')}
                 </button>
               </div>
 
               {/* Archive Status */}
               {patient.isArchived && (
                 <div className="mt-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-2 rounded text-sm">
-                  هذا المريض مؤرشف
+                  {t('patients.archivedNotice')}
                 </div>
               )}
             </div>
@@ -179,22 +182,22 @@ export default function PatientProfile() {
               <div className="p-6">
                 {activeTab === 'overview' && (
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-900">نظرة عامة</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{t('patients.tabOverview')}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-gray-50 p-4 rounded">
-                        <p className="text-sm text-gray-500">آخر زيارة</p>
+                        <p className="text-sm text-gray-500">{t('patients.lastVisit')}</p>
                         <p className="text-lg font-semibold text-gray-900">-</p>
                       </div>
                       <div className="bg-gray-50 p-4 rounded">
-                        <p className="text-sm text-gray-500">الرصيد المستحق</p>
-                        <p className="text-lg font-semibold text-gray-900">0 د.ك</p>
+                        <p className="text-sm text-gray-500">{t('patients.outstandingBalance')}</p>
+                        <p className="text-lg font-semibold text-gray-900">0 {t('common.currency')}</p>
                       </div>
                       <div className="bg-gray-50 p-4 rounded">
-                        <p className="text-sm text-gray-500">الموعد القادم</p>
+                        <p className="text-sm text-gray-500">{t('patients.nextVisit')}</p>
                         <p className="text-lg font-semibold text-gray-900">-</p>
                       </div>
                       <div className="bg-gray-50 p-4 rounded">
-                        <p className="text-sm text-gray-500">إجمالي الزيارات</p>
+                        <p className="text-sm text-gray-500">{t('patients.totalVisits')}</p>
                         <p className="text-lg font-semibold text-gray-900">0</p>
                       </div>
                     </div>
@@ -204,39 +207,33 @@ export default function PatientProfile() {
                 {activeTab === 'visits' && (
                   <div>
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900">سجل الزيارات</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">{t('patients.visitsHistory')}</h3>
                       <button
                         onClick={() => navigate(`/visits/new?patientId=${id}`)}
                         className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors text-sm"
                       >
-                        + زيارة جديدة
+                        + {t('visits.newVisit')}
                       </button>
                     </div>
                     {visits.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
-                        لا توجد زيارات مسجلة
+                        {t('patients.noVisitsRecorded')}
                       </div>
                     ) : (
                       <table className="w-full">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">التاريخ</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">النوع</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">الموعد</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">الملاحظات</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('common.date')}</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.type')}</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('sidebar.appointments')}</th>
+                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.notesLabel')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {visits.map((visit) => (
                             <tr key={visit.id}>
                               <td className="px-4 py-3 text-gray-900">
-                                {new Date(visit.visitDate).toLocaleDateString('ar-KW', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
+                                {formatDateTime(visit.visitDate, i18n.language)}
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -244,12 +241,12 @@ export default function PatientProfile() {
                                   visit.type === 'FOLLOW_UP' ? 'bg-green-100 text-green-700' :
                                   'bg-gray-100 text-gray-700'
                                 }`}>
-                                  {visit.type === 'CHECKUP' ? 'كشف' :
-                                   visit.type === 'FOLLOW_UP' ? 'متابعة' : 'أخرى'}
+                                  {visit.type === 'CHECKUP' ? t('visits.typeCheckup') :
+                                   visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-gray-600">
-                                {visit.appointment ? new Date(visit.appointment.scheduledAt).toLocaleDateString('ar-KW') : '-'}
+                                {visit.appointment ? formatDate(visit.appointment.scheduledAt, i18n.language) : '-'}
                               </td>
                               <td className="px-4 py-3 text-gray-600 text-sm">
                                 {visit.notes || '-'}
@@ -264,27 +261,27 @@ export default function PatientProfile() {
 
                 {activeTab === 'invoices' && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">سجل الفواتير</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.invoicesHistory')}</h3>
                     <div className="text-center py-8 text-gray-500">
-                      لا توجد فواتير مسجلة
+                      {t('patients.noInvoicesRecorded')}
                     </div>
                   </div>
                 )}
 
                 {activeTab === 'payments' && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">سجل المدفوعات</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.paymentsHistory')}</h3>
                     <div className="text-center py-8 text-gray-500">
-                      لا توجد مدفوعات مسجلة
+                      {t('patients.noPaymentsRecorded')}
                     </div>
                   </div>
                 )}
 
                 {activeTab === 'appointments' && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">سجل المواعيد</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.appointmentsHistory')}</h3>
                     <div className="text-center py-8 text-gray-500">
-                      لا توجد مواعيد مسجلة
+                      {t('patients.noAppointmentsRecorded')}
                     </div>
                   </div>
                 )}
