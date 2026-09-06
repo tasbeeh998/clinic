@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { UsersRound, CalendarDays, ClipboardList, ReceiptText, Stethoscope, Wallet } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +8,10 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import DashboardCard from '../components/DashboardCard';
 import StatCard from '../components/StatCard';
+import { patientsService } from '../services/patients.service';
+import { appointmentsService } from '../services/appointments.service';
+import { visitsService } from '../services/visits.service';
+import { reportsService } from '../services/reports.service';
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -16,6 +21,47 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const roleLabel = user?.role === 'ADMIN' ? t('roles.admin') : t('roles.receptionist');
+
+  // Helper to format date as YYYY-MM-DD in local timezone
+  const formatDateLocal = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Get today's date in YYYY-MM-DD format for API calls (local timezone)
+  const today = formatDateLocal(new Date());
+  const weekAgo = formatDateLocal(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
+  // Fetch total patients count
+  const { data: patientsData } = useQuery({
+    queryKey: ['patients', 'count'],
+    queryFn: () => patientsService.getPatients(undefined, undefined, 1, 1),
+    select: (data) => data.meta.total,
+  });
+
+  // Fetch today's appointments count
+  const { data: appointmentsData } = useQuery({
+    queryKey: ['appointments', 'today', today],
+    queryFn: () => appointmentsService.getAppointments(today, undefined, undefined, 1, 1),
+    select: (data) => data.meta.total,
+  });
+
+  // Fetch week visits count
+  const { data: visitsData } = useQuery({
+    queryKey: ['visits', 'week', weekAgo, today],
+    queryFn: () => visitsService.getVisits(undefined, undefined, undefined, undefined, weekAgo, today, undefined, 1, 1),
+    select: (data) => data.meta.total,
+  });
+
+  // Fetch outstanding balance (admin only - reports API is admin-only)
+  const { data: reportsData } = useQuery({
+    queryKey: ['reports', 'summary'],
+    queryFn: () => reportsService.getSummary(),
+    enabled: isAdmin,
+    select: (data) => data.outstandingAmount,
+  });
 
   return (
     <div className="min-h-screen flex bg-[#F6F8FC]">
@@ -79,10 +125,26 @@ export default function Dashboard() {
           <div className="ui-card px-6 py-5">
             <h2 className="text-[16px] font-semibold text-[#102F63] mb-3">{t('dashboard.quickSummary')}</h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 divide-x rtl:divide-x-reverse divide-[#E2E8F0]">
-              <StatCard label={t('dashboard.totalPatients')} value={null} icon={UsersRound} />
-              <StatCard label={t('dashboard.todayAppointments')} value={null} icon={CalendarDays} />
-              <StatCard label={t('dashboard.weekVisits')} value={null} icon={ClipboardList} />
-              <StatCard label={t('dashboard.totalOutstanding')} value={null} icon={Wallet} />
+              <StatCard
+                label={t('dashboard.totalPatients')}
+                value={patientsData ?? 0}
+                icon={UsersRound}
+              />
+              <StatCard
+                label={t('dashboard.todayAppointments')}
+                value={appointmentsData ?? 0}
+                icon={CalendarDays}
+              />
+              <StatCard
+                label={t('dashboard.weekVisits')}
+                value={visitsData ?? 0}
+                icon={ClipboardList}
+              />
+              <StatCard
+                label={t('dashboard.totalOutstanding')}
+                value={isAdmin ? (reportsData ?? 0) : null}
+                icon={Wallet}
+              />
             </div>
           </div>
         </main>

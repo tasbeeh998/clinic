@@ -12,8 +12,7 @@ RUN apt-get update && apt-get install -y wget gnupg lsb-release ca-certificates 
 # Chromium + Arabic fonts for Puppeteer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
-    fonts-noto \
-    fonts-noto-naskh-arabic \
+    fonts-noto-core \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,10 +30,14 @@ RUN npm install
 
 COPY src ./src
 COPY prisma ./prisma
+COPY create-admin.js ./
 
 RUN npm run prisma:generate
 RUN npm run build
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Development must not apply migration history to an existing local database
+# automatically. Fresh or legacy local data is preserved; migrations are an
+# explicit developer action after a reviewed backup/baseline decision.
+CMD ["node", "dist/main.js"]
