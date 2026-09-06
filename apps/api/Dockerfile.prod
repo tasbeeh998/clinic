@@ -1,6 +1,11 @@
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
-RUN apk add --no-cache openssl python3 make g++
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -16,21 +21,36 @@ COPY packages/shared ./packages/shared
 RUN npm run prisma:generate --workspace=apps/api
 RUN npm run build --workspace=packages/shared && npm run build:api
 
-FROM node:20-alpine AS runner
+FROM builder AS production-deps
 
-RUN apk add --no-cache openssl postgresql-client python3 make g++
+ENV NODE_ENV=production
+RUN npm prune --omit=dev
+
+FROM node:20-bookworm-slim AS runner
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    NODE_ENV=production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    chromium \
+    fontconfig \
+    fonts-noto-core \
+    openssl \
+    postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY --from=production-deps /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
 COPY apps/api/package*.json ./apps/api/
 COPY packages/shared/package*.json ./packages/shared/
-
-RUN npm ci --omit=dev
-
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/apps/api/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY apps/api/prisma ./apps/api/prisma
 
 EXPOSE 3001
