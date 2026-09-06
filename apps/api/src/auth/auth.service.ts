@@ -4,6 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import * as argon2 from 'argon2';
@@ -16,6 +17,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private configService: ConfigService,
     private auditService: AuditService,
   ) {}
 
@@ -127,7 +129,7 @@ export class AuthService {
   async refreshTokens(refreshToken: string, ipAddress?: string, userAgent?: string) {
     try {
       const payload = this.jwtService.verify(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
 
       const allUserTokens = await this.prisma.refreshToken.findMany({
@@ -270,12 +272,12 @@ export class AuthService {
     const jti = Math.random().toString(36).substring(2);
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_SECRET || 'secret-key',
+      secret: this.configService.get<string>('JWT_SECRET'),
       expiresIn: '15m',
     });
 
     const refreshToken = this.jwtService.sign({ ...payload, jti }, {
-      secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret-key',
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       expiresIn: '7d',
     });
 
