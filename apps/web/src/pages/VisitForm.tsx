@@ -180,7 +180,7 @@ export default function VisitForm() {
               </label>
               <select
                 value={formData.type}
-                onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value as any }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value as 'CHECKUP' | 'FOLLOW_UP' | 'OTHER' }))}
                 className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
                   errors.type ? 'border-red-500' : 'border-gray-300'
                 }`}

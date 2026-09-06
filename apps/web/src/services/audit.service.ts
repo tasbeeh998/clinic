@@ -5,12 +5,11 @@ export interface AuditLogEntry {
   id: string;
   action: string;
   entityType: string;
-  entityId: string;
   createdAt: string;
-  user: { id: string; name: string; role: string };
+  user?: { name: string } | null;
 }
 
-export interface AuditLogResponse {
+export interface AuditLogsResponse {
   data: AuditLogEntry[];
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
@@ -24,8 +23,9 @@ class AuditService {
     };
   }
 
-  async getLogs(page: number = 1, limit: number = 20): Promise<AuditLogResponse> {
-    const response = await fetch(`${apiBaseUrl}/audit-logs?page=${page}&limit=${limit}`, {
+  async getLogs(page: number, limit: number): Promise<AuditLogsResponse> {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    const response = await fetch(`${apiBaseUrl}/audit?${params.toString()}`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) throw new Error('Failed to fetch audit logs');

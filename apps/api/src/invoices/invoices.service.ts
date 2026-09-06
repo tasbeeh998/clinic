@@ -535,6 +535,7 @@ export class InvoicesService {
       // 2. Original invoice has allocations (it's a replacement) - copy those allocations
       const sourceAllocations = await tx.paymentAllocation.findMany({
         where: { invoiceId: originalInvoiceId },
+        orderBy: { createdAt: 'asc' },
         include: {
           payment: {
             select: { id: true, amount: true, status: true },
@@ -542,11 +543,11 @@ export class InvoicesService {
         },
       });
       
-      let validAllocations: Array<{ paymentId: string; amount: Decimal }> = [];
+      let sourceCredits: Array<{ paymentId: string; amount: Decimal }> = [];
       
       // If there are allocations, this is a replacement invoice - copy those allocations
       if (sourceAllocations.length > 0) {
-        validAllocations = sourceAllocations
+        sourceCredits = sourceAllocations
           .filter(allocation => allocation.payment.status === 'RECORDED')
           .map(allocation => ({
             paymentId: allocation.paymentId,
@@ -561,13 +562,18 @@ export class InvoicesService {
           select: { id: true, amount: true },
         });
         
-        let allocatable = total;
-        validAllocations = directPayments.flatMap((payment) => {
-          const amount = Decimal.min(payment.amount, allocatable).toDecimalPlaces(2);
-          allocatable = allocatable.sub(amount);
-          return amount.gt(0) ? [{ paymentId: payment.id, amount }] : [];
-        });
+        sourceCredits = directPayments.map((payment) => ({ paymentId: payment.id, amount: payment.amount }));
       }
+
+      // A successor may be cheaper than its predecessor. Allocate credit in
+      // order, capped at this replacement's total, so remaining can never be
+      // negative and no payment can create phantom credit on this invoice.
+      let allocatable = total;
+      const validAllocations = sourceCredits.flatMap((credit) => {
+        const amount = Decimal.min(credit.amount, allocatable).toDecimalPlaces(2);
+        allocatable = allocatable.sub(amount);
+        return amount.gt(0) ? [{ paymentId: credit.paymentId, amount }] : [];
+      });
       
       // Calculate the total credit from allocations
       const replacementPaid = validAllocations.reduce((sum, allocation) => sum.add(allocation.amount), new Decimal(0)).toDecimalPlaces(2);

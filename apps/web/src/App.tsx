@@ -18,6 +18,7 @@ import InvoicesList from './pages/InvoicesList'
 import InvoiceForm from './pages/InvoiceForm'
 import InvoiceDetail from './pages/InvoiceDetail'
 import ReportsPage from './pages/ReportsPage'
+import DailyClosingPage from './pages/DailyClosingPage'
 import SettingsPage from './pages/SettingsPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -175,6 +176,14 @@ function App() {
               }
             />
             <Route
+              path="/reports/daily-closing"
+              element={
+                <ProtectedRoute allowedRoles={['ADMIN']}>
+                  <DailyClosingPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/settings"
               element={
                 <ProtectedRoute allowedRoles={['ADMIN']}>
@@ -191,3 +200,4 @@ function App() {
 }
 
 export default App
+

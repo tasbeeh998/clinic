@@ -25,7 +25,6 @@ export class BackupService implements OnModuleInit {
 
   // Concurrency control: prevent overlapping backup/restore operations
   private operationInProgress = false;
-  private operationQueue: Array<() => Promise<unknown>> = [];
 
   constructor(private auditService: AuditService) {}
 
@@ -141,7 +140,12 @@ export class BackupService implements OnModuleInit {
   }
 
   async runBackup(triggeredBy: 'manual' | 'scheduled' | 'pre-restore-safety', userId?: string, ipAddress?: string, userAgent?: string) {
-    return this.withOperationLock(async () => {
+    return this.withOperationLock(() => this.runBackupUnlocked(triggeredBy, userId, ipAddress, userAgent));
+  }
+
+  // Used by restore while it already owns the operation lock. Keeping this
+  // separate prevents the pre-restore safety backup from waiting on itself.
+  private async runBackupUnlocked(triggeredBy: 'manual' | 'scheduled' | 'pre-restore-safety', userId?: string, ipAddress?: string, userAgent?: string) {
       await this.ensureBackupDir();
       const { host, port, user, password, database } = this.getDbConnectionParams();
 
@@ -207,7 +211,6 @@ export class BackupService implements OnModuleInit {
       }
 
       return { filename, sizeBytes: stat.size, createdAt: new Date().toISOString(), triggeredBy, uploadedToRemote };
-    });
   }
 
   async listBackups() {
@@ -286,7 +289,7 @@ export class BackupService implements OnModuleInit {
 
       // Safety net: always take a fresh backup of the CURRENT state right
       // before overwriting it, so a restore is never a one-way door.
-      await this.runBackup('pre-restore-safety', userId, ipAddress, userAgent);
+      await this.runBackupUnlocked('pre-restore-safety', userId, ipAddress, userAgent);
 
       const { host, port, user, password, database } = this.getDbConnectionParams();
 

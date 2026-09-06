@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Eye, Pencil, CalendarPlus, Plus, Filter } from 'lucide-react';
 import { patientsService } from '../services/patients.service';
+import { useTranslation } from 'react-i18next';
+import { formatDate } from '../utils/dateFormat';
 
 // Masks all but the first and last digit of a civil ID for display in the
 // list view only — the full number is still shown on the patient's own
@@ -13,13 +15,8 @@ function maskCivilId(civilId: string): string {
   return civilId[0] + 'X'.repeat(civilId.length - 2) + civilId[civilId.length - 1];
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  return d.toLocaleDateString('ar-KW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-}
-
 export default function PatientsList() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [isArchived, setIsArchived] = useState<boolean | undefined>(undefined);
@@ -50,12 +47,12 @@ export default function PatientsList() {
     <div className="page-container">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">المرضى</h1>
-          <p className="text-sm text-[#64748B] mt-1">إدارة بيانات المرضى والمريضات</p>
+          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.patients')}</h1>
+          <p className="text-sm text-[#64748B] mt-1">{t('patients.subtitle')}</p>
         </div>
         <button onClick={() => navigate('/patients/new')} className="btn-primary flex items-center gap-2 px-4">
           <Plus size={18} strokeWidth={2} />
-          إضافة مريض جديد
+          {t('patients.addNew')}
         </button>
       </div>
 
@@ -66,7 +63,7 @@ export default function PatientsList() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="البحث برقم المدني أو اسم أو هاتف..."
+            placeholder={t('patients.searchPlaceholder')}
             className="ui-input pr-10"
           />
         </div>
@@ -76,7 +73,7 @@ export default function PatientsList() {
             className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC]"
           >
             <Filter size={16} strokeWidth={1.75} />
-            فلترة
+            {t('common.filter')}
           </button>
           {showFilter && (
             <div className="absolute left-0 mt-2 w-40 bg-white border border-[#E2E8F0] rounded-[10px] shadow-[var(--shadow-soft-lg)] z-10 overflow-hidden">
@@ -92,7 +89,7 @@ export default function PatientsList() {
                       : 'text-[#64748B]'
                   }`}
                 >
-                  {opt === 'all' ? 'الكل' : opt === 'active' ? 'نشط' : 'مؤرشف'}
+                  {opt === 'all' ? t('common.all') : opt === 'active' ? t('common.active') : t('common.archived')}
                 </button>
               ))}
             </div>
@@ -109,12 +106,12 @@ export default function PatientsList() {
       )}
 
       {error && (
-        <div className="ui-card p-6 text-center text-[#C4362B] text-sm">فشل في تحميل بيانات المرضى</div>
+        <div className="ui-card p-6 text-center text-[#C4362B] text-sm">{t('patients.loadError')}</div>
       )}
 
       {!isLoading && !error && patients.length === 0 && (
         <div className="ui-card p-16 text-center">
-          <p className="text-[#64748B] mb-4">{search ? 'لا توجد نتائج للبحث' : 'لا توجد بيانات متاحة حاليًا'}</p>
+          <p className="text-[#64748B] mb-4">{search ? t('common.noSearchResults') : t('common.noDataAvailable')}</p>
         </div>
       )}
 
@@ -123,12 +120,12 @@ export default function PatientsList() {
           <table className="ui-table">
             <thead>
               <tr>
-                <th>اسم المريض</th>
-                <th>الرقم المدني</th>
-                <th>هاتف</th>
-                <th>تاريخ آخر زيارة</th>
-                <th>الزيارة القادمة</th>
-                <th>الإجراءات</th>
+                <th>{t('patients.name')}</th>
+                <th>{t('patients.civilId')}</th>
+                <th>{t('patients.phone')}</th>
+                <th>{t('patients.lastVisit')}</th>
+                <th>{t('patients.nextVisit')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -140,27 +137,27 @@ export default function PatientsList() {
                   </td>
                   <td className="font-mono text-[#64748B]">{maskCivilId(patient.civilId)}</td>
                   <td className="text-[#1F2430]">{patient.phone || '—'}</td>
-                  <td className="text-[#64748B]">{formatDate(patient.lastVisitDate)}</td>
-                  <td className="text-[#64748B]">{formatDate(patient.nextAppointmentDate)}</td>
+                  <td className="text-[#64748B]">{formatDate(patient.lastVisitDate, i18n.language)}</td>
+                  <td className="text-[#64748B]">{formatDate(patient.nextAppointmentDate, i18n.language)}</td>
                   <td>
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => navigate(`/patients/${patient.id}`)}
-                        aria-label="عرض بيانات المريض"
+                        aria-label={t('patients.viewPatient')}
                         className="icon-btn"
                       >
                         <Eye size={16} strokeWidth={1.75} />
                       </button>
                       <button
                         onClick={() => navigate(`/patients/${patient.id}/edit`)}
-                        aria-label="تعديل بيانات المريض"
+                        aria-label={t('patients.editPatient')}
                         className="icon-btn"
                       >
                         <Pencil size={16} strokeWidth={1.75} />
                       </button>
                       <button
                         onClick={() => navigate('/appointments/new')}
-                        aria-label="حجز موعد"
+                        aria-label={t('patients.bookAppointment')}
                         className="icon-btn"
                       >
                         <CalendarPlus size={16} strokeWidth={1.75} />
@@ -175,7 +172,12 @@ export default function PatientsList() {
           {meta && (
             <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
               <span className="text-[13px] text-[#64748B]">
-                عرض {(meta.page - 1) * meta.limit + 1} إلى {Math.min(meta.page * meta.limit, meta.total)} من {meta.total} مريض
+                {t('common.showingRange', {
+                  from: (meta.page - 1) * meta.limit + 1,
+                  to: Math.min(meta.page * meta.limit, meta.total),
+                  total: meta.total,
+                  item: t('patients.itemPlural'),
+                })}
               </span>
               {meta.totalPages > 1 && (
                 <div className="flex items-center gap-2">
@@ -184,7 +186,7 @@ export default function PatientsList() {
                     disabled={page === 1}
                     className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
                   >
-                    السابق
+                    {t('common.previous')}
                   </button>
                   <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
                   <button
@@ -192,7 +194,7 @@ export default function PatientsList() {
                     disabled={page === meta.totalPages}
                     className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
                   >
-                    التالي
+                    {t('common.next')}
                   </button>
                 </div>
               )}
