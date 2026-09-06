@@ -127,9 +127,10 @@ export default function InvoiceDetail() {
       <div className="container mx-auto px-4 py-8 max-w-3xl">
         <button
           onClick={() => navigate('/invoices')}
-          className="text-[#4B5694] hover:text-[#111844] text-sm mb-4"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-gray-700 mb-4 sm:w-auto sm:h-auto sm:rounded-none sm:bg-transparent sm:shadow-none sm:text-[#4B5694] sm:hover:text-[#111844] sm:text-sm"
         >
-          ← {t('invoices.backToInvoices')}
+          <span className="sm:hidden">{i18n.language === 'ar' ? '›' : '‹'}</span>
+          <span className="hidden sm:inline">← {t('invoices.backToInvoices')}</span>
         </button>
 
         {formError && (

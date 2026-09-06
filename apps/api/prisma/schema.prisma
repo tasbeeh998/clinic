@@ -333,3 +333,19 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// In-app notifications (appointment reminders, backup-due alerts, etc.).
+// Not tied to a specific user — these are clinic-wide alerts shown to
+// whoever is logged in (single-admin clinic for now).
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  type      String
+  title     String
+  message   String
+  relatedId String?  @db.Uuid
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+}

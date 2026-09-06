@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { ReportsService } from './reports.service';
-import { PdfBrowserService } from '../common/pdf/pdf-browser.service';
+import { PdfBrowserService } from '../common/filters/pdf/pdf-browser.service';
 import { renderReportsHtml, ReportsExportData } from './templates/reports-pdf-template';
 
 const LABELS_EN: Record<string, string> = {
@@ -22,7 +22,7 @@ export class ReportsExportService {
   constructor(
     private reportsService: ReportsService,
     private pdfBrowserService: PdfBrowserService,
-  ) {}
+  ) { }
 
   // Single source of truth for export data: every field here comes from the
   // exact same ReportsService methods (and therefore the exact same
@@ -229,3 +229,4 @@ export class ReportsExportService {
     return Buffer.from(buffer);
   }
 }
+

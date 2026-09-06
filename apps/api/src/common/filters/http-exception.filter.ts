@@ -21,10 +21,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.message
-        : 'Something went wrong';
+    const message = (() => {
+      if (!(exception instanceof HttpException)) return 'Something went wrong';
+      const exceptionResponse = exception.getResponse();
+      if (typeof exceptionResponse === 'object' && exceptionResponse !== null && 'message' in exceptionResponse) {
+        const responseMessage = (exceptionResponse as { message: unknown }).message;
+        return Array.isArray(responseMessage) ? responseMessage.join(', ') : responseMessage;
+      }
+      return exception.message;
+    })();
 
     const error =
       exception instanceof HttpException

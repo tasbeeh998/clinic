@@ -319,7 +319,12 @@
     "reasonScheduleConflict": "Schedule conflict",
     "writeReasonPlaceholder": "Write the reason...",
     "confirmCancel": "Confirm Cancellation",
-    "dateTimeLabel": "Date & Time"
+    "dateTimeLabel": "Date & Time",
+    "patientInfo": "Patient Information",
+    "patientName": "Name",
+    "notes": "Notes",
+    "createdDate": "Created Date",
+    "reasonOther": "Other"
   },
   "reports": {
     "subtitle": "Comprehensive analytics on clinic performance and financial growth indicators",

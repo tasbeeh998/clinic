@@ -8,7 +8,7 @@ import * as path from 'path';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { AuditService } from '../audit/audit.service';
 
-interface BackupManifestEntry {
+export interface BackupManifestEntry {
   filename: string;
   sizeBytes: number;
   createdAt: string;
@@ -23,7 +23,7 @@ interface BackupManifestEntry {
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
 
-  constructor(private auditService: AuditService) {}
+  constructor(private auditService: AuditService) { }
 
   private get backupDir(): string {
     return process.env.BACKUP_DIR || '/app/backups';
@@ -269,3 +269,4 @@ export class BackupService {
     );
   }
 }
+

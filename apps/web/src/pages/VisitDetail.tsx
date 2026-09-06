@@ -57,9 +57,9 @@ export default function VisitDetail() {
 
   return (
     <div className="page-container">
-      <button onClick={() => navigate('/visits')} className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#102F63] mb-4">
+      <button onClick={() => navigate('/visits')} className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-[#64748B] mb-4 sm:w-auto sm:h-auto sm:rounded-none sm:bg-transparent sm:shadow-none sm:gap-1.5 sm:hover:text-[#102F63] sm:text-sm">
         <ArrowRight size={16} strokeWidth={1.75} />
-        {t('visits.backToVisits')}
+        <span className="hidden sm:inline">{t('visits.backToVisits')}</span>
       </button>
 
       <div className="flex items-center justify-between mb-6">
@@ -194,3 +194,4 @@ export default function VisitDetail() {
     </div>
   );
 }
+

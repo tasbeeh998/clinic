@@ -319,7 +319,12 @@
     "reasonScheduleConflict": "تعارض بالمواعيد",
     "writeReasonPlaceholder": "اكتب السبب...",
     "confirmCancel": "تأكيد الإلغاء",
-    "dateTimeLabel": "التاريخ والوقت"
+    "dateTimeLabel": "التاريخ والوقت",
+    "patientInfo": "بيانات المريض",
+    "patientName": "الاسم",
+    "notes": "ملاحظات",
+    "createdDate": "تاريخ الإنشاء",
+    "reasonOther": "أخرى"
   },
   "reports": {
     "subtitle": "تحليلات شاملة لأداء العيادة ومؤشرات النمو المالية",

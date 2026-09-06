@@ -68,12 +68,16 @@ export default function PatientProfile() {
     <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
         {/* Breadcrumb */}
-        <div className="mb-6 text-sm text-gray-600">
-          <button onClick={() => navigate('/patients')} className="hover:text-[#111844]">
-            {t('sidebar.patients')}
+        <div className="mb-6 flex items-center text-sm text-gray-600">
+          <button
+            onClick={() => navigate('/patients')}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-gray-700 sm:w-auto sm:h-auto sm:rounded-none sm:bg-transparent sm:shadow-none sm:hover:text-[#111844]"
+          >
+            <span className="sm:hidden">{i18n.language === 'ar' ? '›' : '‹'}</span>
+            <span className="hidden sm:inline">{t('sidebar.patients')}</span>
           </button>
-          <span className="mx-2">/</span>
-          <span className="text-gray-900">{patient.fullNameAr}</span>
+          <span className="hidden sm:inline mx-2">/</span>
+          <span className="hidden sm:inline text-gray-900">{patient.fullNameAr}</span>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -166,11 +170,10 @@ export default function PatientProfile() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-6 py-4 text-sm font-medium transition-colors ${
-                        activeTab === tab.id
+                      className={`px-6 py-4 text-sm font-medium transition-colors ${activeTab === tab.id
                           ? 'text-[#111844] border-b-2 border-[#111844]'
                           : 'text-gray-500 hover:text-gray-700'
-                      }`}
+                        }`}
                     >
                       {tab.label}
                     </button>
@@ -236,13 +239,12 @@ export default function PatientProfile() {
                                 {formatDateTime(visit.visitDate, i18n.language)}
                               </td>
                               <td className="px-4 py-3">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  visit.type === 'CHECKUP' ? 'bg-blue-100 text-blue-700' :
-                                  visit.type === 'FOLLOW_UP' ? 'bg-green-100 text-green-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${visit.type === 'CHECKUP' ? 'bg-blue-100 text-blue-700' :
+                                    visit.type === 'FOLLOW_UP' ? 'bg-green-100 text-green-700' :
+                                      'bg-gray-100 text-gray-700'
+                                  }`}>
                                   {visit.type === 'CHECKUP' ? t('visits.typeCheckup') :
-                                   visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')}
+                                    visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-gray-600">
@@ -293,3 +295,4 @@ export default function PatientProfile() {
     </div>
   );
 }
+

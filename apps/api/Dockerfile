@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y wget gnupg lsb-release ca-certificates 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-noto \
-    fonts-noto-naskh-arabic \
+    fonts-noto-core \
+    fonts-noto-extra \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
