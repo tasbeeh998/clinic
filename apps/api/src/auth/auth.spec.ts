@@ -385,27 +385,194 @@ describe('Authentication Security Tests (E2E)', () => {
         .set('Cookie', 'refreshToken=nonexistent-token')
         .expect(401);
     });
-  });
 
-  describe('Logout Security', () => {
-    it('should revoke refresh token on logout', async () => {
-      const loginResponse = await request(app.getHttpServer())
+    it('should allow multi-device refresh without invalidating other sessions', async () => {
+      // Wait for rate limiting window to clear from previous tests
+      await new Promise(resolve => setTimeout(resolve, 65000));
+
+      // Simulate Device A login
+      const deviceA = request.agent(app.getHttpServer());
+      const loginA = await deviceA
         .post('/api/auth/login')
         .send({
           email: 'testadmin.auth@test.com',
           password: 'admin123',
-        });
+        })
+        .expect(200);
 
-      const logoutToken = loginResponse.body.accessToken;
+      // Simulate Device B login
+      const deviceB = request.agent(app.getHttpServer());
+      const loginB = await deviceB
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      // Refresh Device A's session
+      const refreshA = await deviceA
+        .post('/api/auth/refresh')
+        .expect(200);
+
+      expect(refreshA.body.accessToken).toBeDefined();
+      expect(refreshA.body.user).toBeDefined();
+
+      // Device B should still be able to refresh its own session
+      const refreshB = await deviceB
+        .post('/api/auth/refresh')
+        .expect(200);
+
+      expect(refreshB.body.accessToken).toBeDefined();
+      expect(refreshB.body.user).toBeDefined();
+
+      // Verify both sessions are still functional
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${refreshA.body.accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${refreshB.body.accessToken}`)
+        .expect(200);
+    }, 70000);
+
+    it('should invalidate only the rotated refresh token, not other sessions', async () => {
+      // Wait for rate limiting window to clear from previous tests
+      await new Promise(resolve => setTimeout(resolve, 65000));
+
+      // Device A login
+      const deviceA = request.agent(app.getHttpServer());
+      const loginA = await deviceA
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      const oldRefreshTokenA = loginA.body.refreshToken;
+
+      // Device B login
+      const deviceB = request.agent(app.getHttpServer());
+      await deviceB
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      // Refresh Device A (rotates its token)
+      await deviceA
+        .post('/api/auth/refresh')
+        .expect(200);
+
+      // Old refresh token from Device A should now be invalid
+      await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('Cookie', `refreshToken=${oldRefreshTokenA}`)
+        .expect(401);
+
+      // Device B should still be able to refresh
+      await deviceB
+        .post('/api/auth/refresh')
+        .expect(200);
+    }, 70000);
+
+    it('should handle concurrent refresh requests correctly', async () => {
+      // Wait for rate limiting window to clear from previous tests
+      await new Promise(resolve => setTimeout(resolve, 65000));
+
+      // Login once
+      const agent = request.agent(app.getHttpServer());
+      await agent
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      // Issue concurrent refresh requests
+      const [refresh1, refresh2] = await Promise.all([
+        agent.post('/api/auth/refresh').expect(200),
+        agent.post('/api/auth/refresh').expect(200),
+      ]);
+
+      // Both should succeed and return new tokens
+      expect(refresh1.body.accessToken).toBeDefined();
+      expect(refresh2.body.accessToken).toBeDefined();
+      expect(refresh1.body.user).toBeDefined();
+      expect(refresh2.body.user).toBeDefined();
+    }, 70000);
+  });
+
+  describe('Logout Security', () => {
+    it('should revoke refresh token on logout', async () => {
+      const agent = request.agent(app.getHttpServer());
+      const loginResponse = await agent
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      const accessToken = loginResponse.body.accessToken;
       
       // Test that logout works with access token
       const logoutResponse = await request(app.getHttpServer())
         .post('/api/auth/logout')
-        .set('Authorization', `Bearer ${logoutToken}`)
+        .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
       expect(logoutResponse.body.message).toBe('Logged out successfully');
     });
+
+    it('should invalidate only the logged-out session, not other active sessions', async () => {
+      // Wait for rate limiting window to clear from previous tests
+      await new Promise(resolve => setTimeout(resolve, 65000));
+
+      // Device A login
+      const deviceA = request.agent(app.getHttpServer());
+      const loginA = await deviceA
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      const accessTokenA = loginA.body.accessToken;
+
+      // Device B login
+      const deviceB = request.agent(app.getHttpServer());
+      const loginB = await deviceB
+        .post('/api/auth/login')
+        .send({
+          email: 'testadmin.auth@test.com',
+          password: 'admin123',
+        })
+        .expect(200);
+
+      // Logout Device A using the same agent (which has the cookie)
+      await deviceA
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${accessTokenA}`)
+        .expect(200);
+
+      // Device A's refresh should now fail
+      await deviceA
+        .post('/api/auth/refresh')
+        .expect(401);
+
+      // Device B should still be able to refresh
+      await deviceB
+        .post('/api/auth/refresh')
+        .expect(200);
+    }, 70000);
   });
 
   describe('Password Security', () => {

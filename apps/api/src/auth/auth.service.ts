@@ -151,8 +151,8 @@ export class AuthService {
         throw new UnauthorizedException('Account is inactive');
       }
 
-      await this.prisma.refreshToken.updateMany({
-        where: { userId: payload.sub },
+      await this.prisma.refreshToken.update({
+        where: { id: storedToken.id },
         data: { revokedAt: new Date() },
       });
 
@@ -185,16 +185,20 @@ export class AuthService {
   }
 
   async logout(refreshToken: string, userId?: string, ipAddress?: string, userAgent?: string) {
-    const allUserTokens = await this.prisma.refreshToken.findMany({
-      where: { userId },
-    });
+    if (refreshToken) {
+      // Revoke only the specific refresh token being used
+      const allUserTokens = await this.prisma.refreshToken.findMany({
+        where: { userId },
+      });
 
-    for (const token of allUserTokens) {
-      if (refreshToken && await argon2.verify(token.token, refreshToken)) {
-        await this.prisma.refreshToken.update({
-          where: { id: token.id },
-          data: { revokedAt: new Date() },
-        });
+      for (const token of allUserTokens) {
+        if (await argon2.verify(token.token, refreshToken)) {
+          await this.prisma.refreshToken.update({
+            where: { id: token.id },
+            data: { revokedAt: new Date() },
+          });
+          break; // Only revoke the matched token
+        }
       }
     }
 
