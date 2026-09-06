@@ -5,6 +5,7 @@ import { AppModule } from '../app.module';
 import { PrismaService } from '../database/prisma.service';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
+import { cleanupTestData } from '../test-utils';
 
 describe('Authentication Security Tests (E2E)', () => {
   let app: INestApplication;
@@ -27,23 +28,8 @@ describe('Authentication Security Tests (E2E)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    // Clean up test data - delete in correct order to respect foreign key constraints
-    const testUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const testUserIds = testUsers.map(u => u.id);
-
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: testUserIds } },
-      });
-    }
-
-    await prisma.refreshToken.deleteMany();
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
+    // Clean up test data using shared utility (auth creates dynamic users, so clean all @test.com)
+    await cleanupTestData(prisma);
 
     // Create admin user
     const adminPasswordHash = await argon2.hash('admin123');
@@ -85,23 +71,8 @@ describe('Authentication Security Tests (E2E)', () => {
   });
 
   afterAll(async () => {
-    // Clean up test data - delete in correct order to respect foreign key constraints
-    const testUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const testUserIds = testUsers.map(u => u.id);
-
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: testUserIds } },
-      });
-    }
-
-    await prisma.refreshToken.deleteMany();
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
+    // Clean up test data using shared utility
+    await cleanupTestData(prisma);
     await app.close();
   });
 

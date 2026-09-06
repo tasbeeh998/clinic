@@ -5,6 +5,7 @@ import { AppModule } from '../app.module';
 import { PrismaService } from '../database/prisma.service';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
+import { cleanupTestData } from '../test-utils';
 
 describe('Payments Module Tests (E2E)', () => {
   let app: INestApplication;
@@ -31,25 +32,8 @@ describe('Payments Module Tests (E2E)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    const cleanupTestUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const cleanupTestUserIds = cleanupTestUsers.map(u => u.id);
-
-    if (cleanupTestUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({ where: { userId: { in: cleanupTestUserIds } } });
-    }
-
-    await prisma.refreshToken.deleteMany();
-    await prisma.paymentAllocation.deleteMany();
-    await prisma.payment.deleteMany();
-    await prisma.invoiceItem.deleteMany();
-    await prisma.invoice.deleteMany();
-    await prisma.visit.deleteMany();
-    await prisma.service.deleteMany();
-    await prisma.patient.deleteMany();
-    await prisma.user.deleteMany({ where: { email: { contains: '@test.com' } } });
+    // Clean up test data using shared utility (scoped to payments test users)
+    await cleanupTestData(prisma, '.payments@test.com');
 
     const adminPasswordHash = await argon2.hash('admin123');
     const admin = await prisma.user.create({
@@ -174,25 +158,8 @@ describe('Payments Module Tests (E2E)', () => {
   });
 
   afterAll(async () => {
-    const cleanupTestUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const cleanupTestUserIds = cleanupTestUsers.map(u => u.id);
-
-    if (cleanupTestUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({ where: { userId: { in: cleanupTestUserIds } } });
-    }
-
-    await prisma.refreshToken.deleteMany();
-    await prisma.paymentAllocation.deleteMany();
-    await prisma.payment.deleteMany();
-    await prisma.invoiceItem.deleteMany();
-    await prisma.invoice.deleteMany();
-    await prisma.visit.deleteMany();
-    await prisma.service.deleteMany();
-    await prisma.patient.deleteMany();
-    await prisma.user.deleteMany({ where: { email: { contains: '@test.com' } } });
+    // Clean up test data using shared utility (scoped to payments test users)
+    await cleanupTestData(prisma, '.payments@test.com');
     await app.close();
   });
 
