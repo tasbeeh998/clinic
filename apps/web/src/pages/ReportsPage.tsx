@@ -15,10 +15,17 @@ const COLORS = ['#102F63', '#173B78', '#4B5694', '#8991A6', '#C4362B', '#C98200'
 function todayMinus(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof TrendingUp; label: string; value: string | number; suffix?: string }) {
@@ -57,6 +64,7 @@ export default function ReportsPage() {
   const [to, setTo] = useState(today());
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const summary = useQuery({ queryKey: ['reports-summary', from, to], queryFn: () => reportsService.getSummary(from, to) });
   const revenueTimeseries = useQuery({ queryKey: ['reports-revenue-ts', from, to], queryFn: () => reportsService.getRevenueTimeseries(from, to) });
@@ -69,9 +77,11 @@ export default function ReportsPage() {
 
   const handleExportPdf = async () => {
     setExportingPdf(true);
+    setExportError(null);
     try {
       await reportsService.downloadExport('pdf', from, to);
     } catch (err) {
+      setExportError(t('reports.exportFailed'));
       console.error('Failed to export PDF report:', err);
     } finally {
       setExportingPdf(false);
@@ -80,9 +90,11 @@ export default function ReportsPage() {
 
   const handleExportExcel = async () => {
     setExportingExcel(true);
+    setExportError(null);
     try {
       await reportsService.downloadExport('excel', from, to);
     } catch (err) {
+      setExportError(t('reports.exportFailed'));
       console.error('Failed to export Excel report:', err);
     } finally {
       setExportingExcel(false);
@@ -127,6 +139,12 @@ export default function ReportsPage() {
           </button>
         </div>
       </div>
+
+      {exportError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+          {exportError}
+        </div>
+      )}
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">

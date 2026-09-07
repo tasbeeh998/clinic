@@ -9,7 +9,10 @@
     "reports": "التقارير",
     "settings": "الإعدادات",
     "menu": "القائمة",
-    "language": "اللغة"
+    "language": "اللغة",
+    "operations": "العمليات",
+    "billing": "الفوترة",
+    "administration": "الإدارة"
   },
   "common": {
     "close": "إغلاق",
@@ -40,12 +43,16 @@
     "back": "عودة",
     "clearFilters": "مسح الفلاتر",
     "showingRange": "عرض {{from}} إلى {{to}} من {{total}} {{item}}",
+    "today": "اليوم",
+    "appointments": "مواعيد",
     "openMenu": "فتح القائمة",
     "print": "طباعة",
     "showPassword": "إظهار كلمة المرور",
     "hidePassword": "إخفاء كلمة المرور",
     "markAllRead": "تحديد الكل كمقروء",
-    "noNotifications": "لا توجد إشعارات"
+    "noNotifications": "لا توجد إشعارات",
+    "confirm": "تأكيد",
+    "processing": "جاري المعالجة..."
   },
   "roles": {
     "admin": "مدير النظام",
@@ -83,8 +90,11 @@
     "quickSummary": "ملخص سريع",
     "totalPatients": "إجمالي المرضى",
     "todayAppointments": "مواعيد اليوم",
+    "todayVisits": "زيارات اليوم",
     "weekVisits": "زيارات هذا الأسبوع",
-    "totalOutstanding": "إجمالي المستحقات"
+    "totalOutstanding": "إجمالي المستحقات",
+    "todayAgenda": "جدول اليوم",
+    "quickActions": "إجراءات سريعة"
   },
   "patients": {
     "subtitle": "إدارة بيانات المرضى والمريضات",
@@ -150,6 +160,7 @@
     "allTypes": "كل الأنواع",
     "loadError": "فشل في تحميل بيانات الزيارات",
     "time": "الوقت",
+    "date": "التاريخ",
     "patient": "المريضة",
     "type": "نوع الزيارة",
     "services": "الخدمات",
@@ -248,6 +259,7 @@
     "backToInvoices": "رجوع للفواتير",
     "downloading": "جارٍ التحميل...",
     "downloadPdf": "تحميل PDF",
+    "sendWhatsapp": "إرسال عبر واتساب",
     "issueInvoice": "إصدار الفاتورة",
     "voidConfirm": "هل أنت متأكد من إلغاء هذه الفاتورة؟",
     "voidInvoice": "إلغاء الفاتورة",
@@ -289,10 +301,12 @@
     "enterValidAmount": "أدخل مبلغاً صحيحاً",
     "reversePayment": "إلغاء الدفعة",
     "reversalReasonPlaceholder": "سبب الإلغاء",
-    "confirmReversal": "تأكيد"
+    "confirmReversal": "تأكيد",
+    "reverseConfirm": "سيتم إلغاء هذه الدفعة وتعديل رصيد الفاتورة. هذا الإجراء لا يمكن التراجع عنه."
   },
   "appointments": {
     "loadError": "فشل في تحميل بيانات المواعيد",
+    "subtitle": "إدارة مواعيد العيادة وجدولة المواعيد",
     "statusBooked": "محجوز",
     "statusConfirmed": "مؤكد",
     "statusDone": "تم",
@@ -353,7 +367,8 @@
     "exportPdf": "تصدير PDF",
     "exportExcel": "تصدير Excel",
     "exporting": "جارِ التصدير...",
-    "exportError": "فشل تصدير التقرير"
+    "exportError": "فشل تصدير التقرير",
+    "exportFailed": "فشل تصدير التقرير. يرجى المحاولة مرة أخرى."
   },
   "settings": {
     "subtitle": "إدارة إعدادات النظام والصلاحيات والتنبيهات والنسخ الاحتياطي والأمان",

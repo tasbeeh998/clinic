@@ -6,6 +6,9 @@ import { invoicesService, CreateReplacementDto } from '../services/invoices.serv
 import { paymentsService, PaymentMethod } from '../services/payments.service';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../utils/dateFormat';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { formatMoney } from '../utils/formatters';
+import { normalizeDigits } from '../utils/numeral';
 
 export default function InvoiceDetail() {
   const { t, i18n } = useTranslation();
@@ -86,7 +89,77 @@ export default function InvoiceDetail() {
 
   const [showReplacementForm, setShowReplacementForm] = useState(false);
   const [reversalNotes, setReversalNotes] = useState('');
-  const [paymentToReverse, setPaymentToReverse] = useState<string | null>(null);
+  const [showVoidConfirm, setShowVoidConfirm] = useState(false);
+  const [showReplacementConfirm, setShowReplacementConfirm] = useState(false);
+  const [showReverseConfirm, setShowReverseConfirm] = useState(false);
+  const [paymentToReverseId, setPaymentToReverseId] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Downloads the PDF (already localized server-side via `lang`) and saves it
+  // via a temporary <a> click — the standard no-library way to save a Blob.
+  const downloadPdfFile = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+    if (!invoice) return null;
+    setFormError(null);
+    setIsGeneratingPdf(true);
+    try {
+      const blob = await invoicesService.downloadInvoicePdf(invoice.id, i18n.language);
+      const fileName = `${invoice.invoiceNumber}.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return { blob, fileName };
+    } catch {
+      setFormError(t('invoices.pdfDownloadFailed'));
+      return null;
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    downloadPdfFile();
+  };
+
+  // WhatsApp can't be handed a file via a wa.me link (no API for that), so:
+  // on devices/browsers that support the native share sheet with files
+  // (mainly mobile), we hand it the PDF directly and WhatsApp shows up as one
+  // of the share targets. Everywhere else, we fall back to downloading the
+  // file and opening a pre-filled wa.me chat, and the person attaches the
+  // file manually from their Downloads.
+  const handleSendWhatsapp = async () => {
+    const result = await downloadPdfFile();
+    if (!result || !invoice) return;
+    const { blob, fileName } = result;
+
+    // eslint-disable-next-line no-undef
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    const canShareFile =
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareFile) {
+      try {
+        await navigator.share({ files: [file] });
+        return;
+      } catch {
+        // User cancelled the share sheet, or it failed — fall through to the
+        // wa.me fallback below instead of leaving them with nothing.
+      }
+    }
+
+    const digitsOnly = (invoice.patient.phone || '').replace(/[^\d]/g, '');
+    const message =
+      i18n.language === 'ar'
+        ? `مرفق فاتورتكم رقم ${invoice.invoiceNumber} من مركز العيادات التخصصية.`
+        : `Attached is your invoice No. ${invoice.invoiceNumber} from Specialized Clinics Center.`;
+    window.open(`https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`, '_blank');
+  };
 
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,11 +230,7 @@ export default function InvoiceDetail() {
               )}
               {invoice.status !== 'VOID' && isAdmin && (
                 <button
-                  onClick={() => {
-                    if (window.confirm(t('invoices.voidConfirm'))) {
-                      statusMutation.mutate('VOID');
-                    }
-                  }}
+                  onClick={() => setShowVoidConfirm(true)}
                   disabled={statusMutation.isPending}
                   className="px-4 py-2 border border-[#C4362B] text-[#C4362B] rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
                 >
@@ -174,6 +243,22 @@ export default function InvoiceDetail() {
                   className="px-4 py-2 border border-[#4B5694] text-[#4B5694] rounded-md hover:bg-blue-50 transition-colors"
                 >
                   {t('invoices.createReplacement')}
+                </button>
+              )}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingPdf ? t('invoices.downloading') : t('invoices.downloadPdf')}
+              </button>
+              {invoice.patient.phone && (
+                <button
+                  onClick={handleSendWhatsapp}
+                  disabled={isGeneratingPdf}
+                  className="px-4 py-2 bg-[#25D366] text-white rounded-md hover:bg-[#1ebe57] transition-colors disabled:opacity-50"
+                >
+                  {t('invoices.sendWhatsapp')}
                 </button>
               )}
             </div>
@@ -206,19 +291,19 @@ export default function InvoiceDetail() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.service')}</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('services.price')}</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.quantity')}</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.total')}</th>
+                <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('invoices.service')}</th>
+                <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700">{t('services.price')}</th>
+                <th className="px-6 py-3 text-center text-sm font-semibold text-gray-700">{t('invoices.quantity')}</th>
+                <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700">{t('invoices.total')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {invoice.invoiceItems.map((item) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 text-gray-900">{item.serviceNameSnapshot}</td>
-                  <td className="px-6 py-4 text-gray-700">{parseFloat(item.unitPriceSnapshot).toFixed(3)} {t('common.currency')}</td>
+                  <td className="px-6 py-4 text-gray-700">{formatMoney(item.unitPriceSnapshot, t('common.currency'))}</td>
                   <td className="px-6 py-4 text-gray-700">{item.quantity}</td>
-                  <td className="px-6 py-4 text-gray-900 font-medium">{parseFloat(item.lineTotal).toFixed(3)} {t('common.currency')}</td>
+                  <td className="px-6 py-4 text-gray-900 font-medium">{formatMoney(item.lineTotal, t('common.currency'))}</td>
                 </tr>
               ))}
             </tbody>
@@ -226,7 +311,7 @@ export default function InvoiceDetail() {
           <div className="border-t border-gray-200 p-4 space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">{t('invoices.subtotal')}</span>
-              <span className="text-gray-900">{parseFloat(invoice.subtotal).toFixed(3)} {t('common.currency')}</span>
+              <span className="text-gray-900">{formatMoney(invoice.subtotal, t('common.currency'))}</span>
             </div>
             {invoice.additionalCharges && invoice.additionalCharges.length > 0 && (
               invoice.additionalCharges.map((charge) => (
@@ -235,21 +320,21 @@ export default function InvoiceDetail() {
                     {charge.description || (charge.chargeType === 'PERCENTAGE' ? t('invoices.percentageCharge') : t('invoices.fixedCharge'))}
                     ({charge.chargeType === 'PERCENTAGE' ? `${parseFloat(charge.chargeValue)}%` : `${parseFloat(charge.chargeValue).toFixed(3)} ${t('common.currency')}`})
                   </span>
-                  <span className="text-gray-900">{parseFloat(charge.calculatedAmount).toFixed(3)} {t('common.currency')}</span>
+                  <span className="text-gray-900">{formatMoney(charge.calculatedAmount, t('common.currency'))}</span>
                 </div>
               ))
             )}
             <div className="flex justify-between">
               <span className="text-gray-600">{t('invoices.total')}</span>
-              <span className="font-bold text-[#111844]">{parseFloat(invoice.total).toFixed(3)} {t('common.currency')}</span>
+              <span className="font-bold text-[#111844]">{formatMoney(invoice.total, t('common.currency'))}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">{t('invoices.paid')}</span>
-              <span className="text-gray-900">{parseFloat(invoice.paid).toFixed(3)} {t('common.currency')}</span>
+              <span className="text-gray-900">{formatMoney(invoice.paid, t('common.currency'))}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">{t('invoices.remaining')}</span>
-              <span className="font-bold text-[#C4362B]">{parseFloat(invoice.remaining).toFixed(3)} {t('common.currency')}</span>
+              <span className="font-bold text-[#C4362B]">{formatMoney(invoice.remaining, t('common.currency'))}</span>
             </div>
           </div>
         </div>
@@ -262,24 +347,7 @@ export default function InvoiceDetail() {
               {t('invoices.replacementNote')}
             </p>
             <button
-              onClick={() => {
-                if (window.confirm(t('invoices.replacementConfirm'))) {
-                  // Use current invoice items as basis for replacement
-                  const replacementItems = invoice.invoiceItems.map(item => ({
-                    serviceId: item.serviceId,
-                    quantity: item.quantity,
-                    unitPrice: parseFloat(item.unitPriceSnapshot),
-                  }));
-                  replacementMutation.mutate({ 
-                    items: replacementItems,
-                    additionalCharges: invoice.additionalCharges?.map(charge => ({
-                      chargeType: charge.chargeType,
-                      chargeValue: parseFloat(charge.chargeValue),
-                      description: charge.description || undefined,
-                    })) || []
-                  });
-                }
-              }}
+              onClick={() => setShowReplacementConfirm(true)}
               disabled={replacementMutation.isPending}
               className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50"
             >
@@ -298,16 +366,34 @@ export default function InvoiceDetail() {
         {canRecordPayment && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-lg font-bold text-[#111844] mb-4">{t('payments.recordPayment')}</h2>
+
+            {/* Balance Information */}
+            <div className="bg-gray-50 rounded p-4 mb-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">{t('invoices.total')}</span>
+                <span className="font-medium text-gray-900">{formatMoney(invoice.total, t('common.currency'))}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">{t('invoices.paid')}</span>
+                <span className="font-medium text-gray-900">{formatMoney(invoice.paid, t('common.currency'))}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold border-t border-gray-200 pt-2">
+                <span className="text-gray-700">{t('invoices.remaining')}</span>
+                <span className="text-[#C4362B]">{formatMoney(invoice.remaining, t('common.currency'))}</span>
+              </div>
+            </div>
+
             <form onSubmit={handleRecordPayment} className="flex flex-wrap gap-3 items-end">
               <div className="flex-1 min-w-[120px]">
                 <label className="block text-sm text-gray-600 mb-1">{t('payments.amount')}</label>
                 <input
-                  type="number"
-                  step="0.001"
-                  min="0.001"
+                  type="text"
+                  inputMode="decimal"
+                  dir="ltr"
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+                  onChange={(e) => setPaymentAmount(normalizeDigits(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] text-left"
+                  placeholder="0.000"
                   required
                 />
               </div>
@@ -356,62 +442,31 @@ export default function InvoiceDetail() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('payments.amount')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('payments.method')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('common.date')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('payments.recordedBy')}</th>
-                  {isAdmin && <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700"></th>}
+                  <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700">{t('payments.amount')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('payments.method')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('common.date')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('payments.recordedBy')}</th>
+                  {isAdmin && <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {payments.map((payment) => (
                   <tr key={payment.id}>
-                    <td className="px-6 py-4 text-gray-900 font-medium">{parseFloat(payment.amount).toFixed(3)} {t('common.currency')}</td>
+                    <td className="px-6 py-4 text-gray-900 font-medium">{formatMoney(payment.amount, t('common.currency'))}</td>
                     <td className="px-6 py-4 text-gray-700">{PAYMENT_METHOD_LABELS[payment.method]}</td>
                     <td className="px-6 py-4 text-gray-600">{formatDateTime(payment.paymentDate, i18n.language)}</td>
                     <td className="px-6 py-4 text-gray-600">{payment.recordedBy?.name || '—'}</td>
                     {isAdmin && (
                       <td className="px-6 py-4">
-                        {paymentToReverse === payment.id ? (
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder={t('payments.reversalReasonPlaceholder')}
-                              value={reversalNotes}
-                              onChange={(e) => setReversalNotes(e.target.value)}
-                              className="px-2 py-1 border border-gray-300 rounded text-sm w-32"
-                            />
-                            <button
-                              onClick={() => {
-                                reversePaymentMutation.mutate({ 
-                                  paymentId: payment.id, 
-                                  reversalNotes: reversalNotes || undefined 
-                                });
-                                setPaymentToReverse(null);
-                                setReversalNotes('');
-                              }}
-                              className="text-[#C4362B] hover:text-[#a32b22] text-sm font-medium"
-                            >
-                              {t('payments.confirmReversal')}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setPaymentToReverse(null);
-                                setReversalNotes('');
-                              }}
-                              className="text-gray-600 hover:text-gray-900 text-sm"
-                            >
-                              {t('common.cancel')}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setPaymentToReverse(payment.id)}
-                            className="text-[#C4362B] hover:text-[#a32b22] text-sm"
-                          >
-                            {t('payments.reversePayment')}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            setPaymentToReverseId(payment.id);
+                            setShowReverseConfirm(true);
+                          }}
+                          className="text-[#C4362B] hover:text-[#a32b22] text-sm"
+                        >
+                          {t('payments.reversePayment')}
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -420,6 +475,84 @@ export default function InvoiceDetail() {
             </table>
           )}
         </div>
+
+        {/* Confirmation Dialogs */}
+        <ConfirmDialog
+          isOpen={showVoidConfirm}
+          onClose={() => setShowVoidConfirm(false)}
+          onConfirm={() => {
+            statusMutation.mutate('VOID');
+            setShowVoidConfirm(false);
+          }}
+          title={t('invoices.voidInvoice')}
+          description={t('invoices.voidConfirm')}
+          confirmText={t('invoices.voidInvoice')}
+          variant="danger"
+          isLoading={statusMutation.isPending}
+        />
+
+        <ConfirmDialog
+          isOpen={showReplacementConfirm}
+          onClose={() => setShowReplacementConfirm(false)}
+          onConfirm={() => {
+            const replacementItems = invoice.invoiceItems.map(item => ({
+              serviceId: item.serviceId,
+              quantity: item.quantity,
+              unitPrice: parseFloat(item.unitPriceSnapshot),
+            }));
+            replacementMutation.mutate({
+              items: replacementItems,
+              additionalCharges: invoice.additionalCharges?.map(charge => ({
+                chargeType: charge.chargeType,
+                chargeValue: parseFloat(charge.chargeValue),
+                description: charge.description || undefined,
+              })) || []
+            });
+            setShowReplacementConfirm(false);
+          }}
+          title={t('invoices.createReplacementTitle')}
+          description={t('invoices.replacementConfirm')}
+          confirmText={t('invoices.createReplacementBtn')}
+          variant="default"
+          isLoading={replacementMutation.isPending}
+        />
+
+        <ConfirmDialog
+          isOpen={showReverseConfirm}
+          onClose={() => {
+            setShowReverseConfirm(false);
+            setPaymentToReverseId(null);
+            setReversalNotes('');
+          }}
+          onConfirm={() => {
+            if (paymentToReverseId) {
+              reversePaymentMutation.mutate({
+                paymentId: paymentToReverseId,
+                reversalNotes: reversalNotes || undefined
+              });
+            }
+            setShowReverseConfirm(false);
+            setPaymentToReverseId(null);
+            setReversalNotes('');
+          }}
+          title={t('payments.reversePayment')}
+          description={
+            <div>
+              <p className="mb-3">{t('payments.reverseConfirm')}</p>
+              <input
+                type="text"
+                placeholder={t('payments.reversalReasonPlaceholder')}
+                value={reversalNotes}
+                onChange={(e) => setReversalNotes(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+              />
+            </div>
+          }
+          confirmText={t('payments.confirmReversal')}
+          variant="danger"
+          isLoading={reversePaymentMutation.isPending}
+        />
       </div>
     </div>
   );

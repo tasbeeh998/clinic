@@ -9,7 +9,10 @@
     "reports": "Reports",
     "settings": "Settings",
     "menu": "Menu",
-    "language": "Language"
+    "language": "Language",
+    "operations": "Operations",
+    "billing": "Billing",
+    "administration": "Administration"
   },
   "common": {
     "close": "Close",
@@ -40,12 +43,16 @@
     "back": "Back",
     "clearFilters": "Clear filters",
     "showingRange": "Showing {{from}} to {{to}} of {{total}} {{item}}",
+    "today": "Today",
+    "appointments": "appointments",
     "openMenu": "Open menu",
     "print": "Print",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "markAllRead": "Mark all read",
-    "noNotifications": "No notifications"
+    "noNotifications": "No notifications",
+    "confirm": "Confirm",
+    "processing": "Processing..."
   },
   "roles": {
     "admin": "Admin",
@@ -83,8 +90,11 @@
     "quickSummary": "Quick Summary",
     "totalPatients": "Total Patients",
     "todayAppointments": "Today's Appointments",
+    "todayVisits": "Today's Visits",
     "weekVisits": "Visits This Week",
-    "totalOutstanding": "Total Outstanding"
+    "totalOutstanding": "Total Outstanding",
+    "todayAgenda": "Today's Agenda",
+    "quickActions": "Quick Actions"
   },
   "patients": {
     "subtitle": "Manage patient records",
@@ -150,6 +160,7 @@
     "allTypes": "All types",
     "loadError": "Failed to load visit data",
     "time": "Time",
+    "date": "Date",
     "patient": "Patient",
     "type": "Visit Type",
     "services": "Services",
@@ -248,6 +259,7 @@
     "backToInvoices": "Back to invoices",
     "downloading": "Downloading...",
     "downloadPdf": "Download PDF",
+    "sendWhatsapp": "Send via WhatsApp",
     "issueInvoice": "Issue Invoice",
     "voidConfirm": "Are you sure you want to void this invoice?",
     "voidInvoice": "Void Invoice",
@@ -289,10 +301,12 @@
     "enterValidAmount": "Enter a valid amount",
     "reversePayment": "Reverse Payment",
     "reversalReasonPlaceholder": "Reversal reason",
-    "confirmReversal": "Confirm"
+    "confirmReversal": "Confirm",
+    "reverseConfirm": "This will reverse the payment and adjust the invoice balance. This action cannot be undone."
   },
   "appointments": {
     "loadError": "Failed to load appointment data",
+    "subtitle": "Manage clinic appointments and scheduling",
     "statusBooked": "Booked",
     "statusConfirmed": "Confirmed",
     "statusDone": "Done",
@@ -353,7 +367,8 @@
     "exportPdf": "Export PDF",
     "exportExcel": "Export Excel",
     "exporting": "Exporting...",
-    "exportError": "Failed to export report"
+    "exportError": "Failed to export report",
+    "exportFailed": "Failed to export report. Please try again."
   },
   "settings": {
     "subtitle": "Manage system settings, permissions, notifications, backups, and security",

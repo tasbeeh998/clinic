@@ -5,6 +5,7 @@ import { visitsService } from '../services/visits.service';
 import { servicesService } from '../services/services.service';
 import { invoicesService, CreateInvoiceDto } from '../services/invoices.service';
 import { useTranslation } from 'react-i18next';
+import { formatMoney } from '../utils/formatters';
 
 interface LineItem {
   serviceId: string;
@@ -189,7 +190,7 @@ export default function InvoiceForm() {
                     <option value="">{t('invoices.chooseService')}</option>
                     {services.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} — {parseFloat(s.currentPrice).toFixed(3)} {t('common.currency')}
+                        {s.name} — {formatMoney(s.currentPrice, t('common.currency'))}
                       </option>
                     ))}
                   </select>
@@ -212,7 +213,7 @@ export default function InvoiceForm() {
                     title={t('invoices.priceOverrideHint')}
                   />
                   <div className="w-24 pt-2 text-gray-700 text-sm">
-                    {service && item.unitPrice !== null ? (item.unitPrice * item.quantity).toFixed(3) : '0.000'} {t('common.currency')}
+                    {service && item.unitPrice !== null ? formatMoney(item.unitPrice * item.quantity, t('common.currency')) : formatMoney(0, t('common.currency'))}
                   </div>
                   {items.length > 1 && (
                     <button
@@ -267,8 +268,8 @@ export default function InvoiceForm() {
                 />
                 <div className="w-24 pt-2 text-gray-700 text-sm">
                   {charge.chargeType === 'PERCENTAGE'
-                    ? `${((subtotal * charge.chargeValue) / 100).toFixed(3)} ${t('common.currency')}`
-                    : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`
+                    ? formatMoney((subtotal * charge.chargeValue) / 100, t('common.currency'))
+                    : formatMoney(charge.chargeValue, t('common.currency'))
                   }
                 </div>
                 {additionalCharges.length > 1 && (
@@ -294,25 +295,25 @@ export default function InvoiceForm() {
           <div className="border-t border-gray-200 pt-4 space-y-2 mb-6">
             <div className="flex justify-between items-center">
               <span className="text-gray-600">{t('invoices.subtotal')}</span>
-              <span className="text-gray-900">{subtotal.toFixed(3)} {t('common.currency')}</span>
+              <span className="text-gray-900">{formatMoney(subtotal, t('common.currency'))}</span>
             </div>
             {additionalCharges.map((charge, index) => (
               <div key={index} className="flex justify-between items-center text-sm">
                 <span className="text-gray-600">
                   {charge.description || (charge.chargeType === 'PERCENTAGE' ? t('invoices.percentageCharge') : t('invoices.fixedCharge'))}
-                  ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : `${charge.chargeValue.toFixed(3)} ${t('common.currency')}`})
+                  ({charge.chargeType === 'PERCENTAGE' ? `${charge.chargeValue}%` : formatMoney(charge.chargeValue, t('common.currency'))})
                 </span>
                 <span className="text-gray-900">
                   {charge.chargeType === 'PERCENTAGE'
-                    ? ((subtotal * charge.chargeValue) / 100).toFixed(3)
-                    : charge.chargeValue.toFixed(3)
-                  } {t('common.currency')}
+                    ? formatMoney((subtotal * charge.chargeValue) / 100, t('common.currency'))
+                    : formatMoney(charge.chargeValue, t('common.currency'))
+                  }
                 </span>
               </div>
             ))}
             <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
               <span className="text-lg font-bold text-[#111844]">{t('invoices.total')}</span>
-              <span className="text-lg font-bold text-[#111844]">{total.toFixed(3)} {t('common.currency')}</span>
+              <span className="text-lg font-bold text-[#111844]">{formatMoney(total, t('common.currency'))}</span>
             </div>
           </div>
 

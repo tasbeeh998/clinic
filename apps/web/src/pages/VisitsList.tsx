@@ -6,6 +6,7 @@ import { visitsService, VisitStatus } from '../services/visits.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate, formatTime } from '../utils/dateFormat';
 import DateInput from '../components/DateInput';
+import { useDebounce } from '../hooks/useDebounce';
 
 function statusBadgeStyle(status: VisitStatus) {
   switch (status) {
@@ -24,6 +25,7 @@ export default function VisitsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState<VisitStatus | ''>('');
   const [typeFilter, setTypeFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -49,7 +51,7 @@ export default function VisitsList() {
   });
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['visits', search, statusFilter, typeFilter, dateFilter, page],
+    queryKey: ['visits', debouncedSearch, statusFilter, typeFilter, dateFilter, page],
     queryFn: () =>
       visitsService.getVisits(
         undefined,
@@ -58,7 +60,7 @@ export default function VisitsList() {
         (statusFilter || undefined) as VisitStatus | undefined,
         dateFilter || undefined,
         dateFilter || undefined,
-        search || undefined,
+        debouncedSearch || undefined,
         page,
         limit,
       ),
@@ -78,12 +80,17 @@ export default function VisitsList() {
 
   return (
     <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.visits')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{t('visits.subtitle')}</p>
+          <p className="text-sm text-[#64748B] mt-1">
+            {t('visits.subtitle')}
+            {meta && meta.total > 0 && (
+              <span className="font-medium text-[#102F63]"> · {meta.total} {t('visits.itemPlural')}</span>
+            )}
+          </p>
         </div>
-        <button onClick={() => navigate('/visits/new')} className="btn-primary flex items-center gap-2 px-4">
+        <button onClick={() => navigate('/visits/new')} className="btn-primary flex items-center gap-2 px-4 sm:w-auto w-full justify-center">
           <Plus size={18} strokeWidth={2} />
           {t('visits.registerNew')}
         </button>
@@ -106,24 +113,24 @@ export default function VisitsList() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
-          <Search size={17} strokeWidth={1.75} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search size={17} strokeWidth={1.75} className="absolute end-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder={t('visits.searchPlaceholder')}
-            className="ui-input pr-10"
+            className="ui-input pe-10"
           />
         </div>
         <DateInput
           value={dateFilter}
           onChange={(v) => { setDateFilter(v); setPage(1); }}
-          className="ui-input w-auto"
+          className="ui-input w-full sm:w-auto"
           isClearable
         />
-        <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="ui-input w-auto">
+        <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="ui-input w-full sm:w-auto">
           <option value="">{t('visits.allTypes')}</option>
           <option value="CHECKUP">{t('visits.typeCheckup')}</option>
           <option value="FOLLOW_UP">{t('visits.typeFollowUp')}</option>
@@ -132,7 +139,7 @@ export default function VisitsList() {
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value as VisitStatus | ''); setPage(1); }}
-          className="ui-input w-auto"
+          className="ui-input w-full sm:w-auto"
         >
           <option value="">{t('common.allStatuses')}</option>
           {(Object.keys(STATUS_LABELS) as VisitStatus[]).map((s) => (
@@ -241,6 +248,82 @@ export default function VisitsList() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Mobile Card View */}
+      {!isLoading && !error && visits.length > 0 && (
+        <div className="md:hidden space-y-3">
+          {visits.map((visit) => {
+            const invoice = visit.invoices?.[0];
+            return (
+              <div key={visit.id} className="ui-card p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="font-medium text-[#1F2430]">{visit.patient.fullNameAr}</div>
+                    <div className="text-xs text-[#94A3B8]">{visit.patient.civilId[0]}{'X'.repeat(Math.max(0, visit.patient.civilId.length - 2))}{visit.patient.civilId.slice(-1)}</div>
+                  </div>
+                  <span className="ui-badge" style={statusBadgeStyle(visit.status)}>
+                    {STATUS_LABELS[visit.status]}
+                  </span>
+                </div>
+                <div className="space-y-2 text-sm mb-3">
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('visits.time')}</span>
+                    <span className="text-[#1F2430]">{formatTime(visit.visitDate, i18n.language)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('visits.date')}</span>
+                    <span className="text-[#64748B]">{formatDate(visit.visitDate, i18n.language)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('visits.type')}</span>
+                    <span className="text-[#1F2430]">{TYPE_LABELS[visit.type]}</span>
+                  </div>
+                  {invoice && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-[#64748B]">{t('visits.invoice')}</span>
+                        <span className="text-[#64748B]">{invoice.invoiceNumber}</span>
+                      </div>
+                      <div className="text-[#64748B] text-xs">
+                        {invoice.invoiceItems.map((i) => i.serviceNameSnapshot).join(i18n.language === 'ar' ? '، ' : ', ')}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => navigate(`/visits/${visit.id}`)} className="flex-1 btn-primary flex items-center justify-center gap-2 py-2">
+                    <Eye size={16} strokeWidth={2} />
+                    {t('visits.viewDetails')}
+                  </button>
+                  {invoice && (
+                    <button onClick={() => navigate(`/invoices/${invoice.id}`)} className="icon-btn">
+                      <ReceiptText size={18} strokeWidth={1.75} />
+                    </button>
+                  )}
+                  {(visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS') && (
+                    <button onClick={() => handleComplete(visit.id)} className="icon-btn">
+                      <CheckCircle2 size={18} strokeWidth={1.75} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Mobile Pagination */}
+      {meta && meta.totalPages > 1 && (
+        <div className="md:hidden flex items-center justify-center gap-3 mt-4">
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
+            {t('common.previous')}
+          </button>
+          <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))} disabled={page === meta.totalPages} className="px-4 py-2 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
+            {t('common.next')}
+          </button>
         </div>
       )}
     </div>

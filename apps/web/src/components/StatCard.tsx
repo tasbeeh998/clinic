@@ -6,9 +6,10 @@ interface StatCardProps {
   icon?: LucideIcon;
   isLoading?: boolean;
   trend?: string;
+  error?: boolean;
 }
 
-export default function StatCard({ label, value, icon: Icon, isLoading, trend }: StatCardProps) {
+export default function StatCard({ label, value, icon: Icon, isLoading, trend, error }: StatCardProps) {
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-2">
@@ -21,6 +22,11 @@ export default function StatCard({ label, value, icon: Icon, isLoading, trend }:
       </div>
       {isLoading ? (
         <div className="ui-skeleton h-7 w-24" />
+      ) : error ? (
+        <div className="flex items-center gap-2 text-[#C4362B] text-sm">
+          <span className="ui-empty-state-icon">!</span>
+          <span>—</span>
+        </div>
       ) : (
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-[#102F63]">{value ?? '—'}</span>
