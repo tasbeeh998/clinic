@@ -21,15 +21,34 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message = (() => {
-      if (!(exception instanceof HttpException)) return 'Something went wrong';
+    // NestJS's ValidationPipe throws a BadRequestException whose response
+    // body is `{ statusCode, message: string[], error: 'Bad Request' }`.
+    // exception.message in that case is NOT the array of validation
+    // errors — HttpException falls back to a generic name derived from the
+    // constructor ("Bad Request Exception") whenever `response.message`
+    // isn't a plain string. We read the actual response body first so real
+    // validation errors (or any custom message) reach the client instead of
+    // that generic label.
+    let message: string;
+    if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
-      if (typeof exceptionResponse === 'object' && exceptionResponse !== null && 'message' in exceptionResponse) {
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else if (
+        exceptionResponse &&
+        typeof exceptionResponse === 'object' &&
+        'message' in exceptionResponse
+      ) {
         const responseMessage = (exceptionResponse as { message: unknown }).message;
-        return Array.isArray(responseMessage) ? responseMessage.join(', ') : responseMessage;
+        message = Array.isArray(responseMessage)
+          ? responseMessage.join(', ')
+          : String(responseMessage);
+      } else {
+        message = exception.message;
       }
-      return exception.message;
-    })();
+    } else {
+      message = 'Something went wrong';
+    }
 
     const error =
       exception instanceof HttpException

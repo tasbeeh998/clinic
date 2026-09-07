@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Menu, Bell, UserRound, LogOut, ChevronDown, Languages, CalendarClock, DatabaseBackup, CheckCheck } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Menu, Bell, UserRound, LogOut, ChevronDown, Languages, CalendarClock, DatabaseBackup, CheckCheck, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { setLanguage } from '../i18n/config';
 import { notificationsService } from '../services/notifications.service';
@@ -19,6 +20,11 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const showBackButton = location.pathname !== '/dashboard';
+  const BackIcon = i18n.language === 'ar' ? ArrowRight : ArrowLeft;
 
   const toggleLanguage = () => {
     setLanguage(i18n.language === 'ar' ? 'en' : 'ar');
@@ -70,6 +76,15 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
   return (
     <header className="h-[72px] bg-white border-b border-[#E2E8F0] flex items-center justify-between px-5 md:px-8 shrink-0">
       <div className="flex items-center gap-3">
+        {showBackButton && (
+          <button
+            onClick={() => navigate(-1)}
+            aria-label={t('common.back')}
+            className="text-[#102F63] bg-white border border-[#E2E8F0] hover:bg-[#F6F8FC] rounded-full p-1.5 shrink-0"
+          >
+            <BackIcon size={18} strokeWidth={1.75} />
+          </button>
+        )}
         <button
           onClick={onOpenSidebar}
           aria-label={t('common.openMenu')}
@@ -128,9 +143,8 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
                     <li key={n.id}>
                       <button
                         onClick={() => handleNotificationClick(n.id, n.isRead)}
-                        className={`w-full text-right px-4 py-3 border-b border-[#F1F5F9] last:border-0 flex items-start gap-2.5 hover:bg-[#F6F8FC] transition-colors ${
-                          !n.isRead ? 'bg-[#F0F4FB]' : ''
-                        }`}
+                        className={`w-full text-right px-4 py-3 border-b border-[#F1F5F9] last:border-0 flex items-start gap-2.5 hover:bg-[#F6F8FC] transition-colors ${!n.isRead ? 'bg-[#F0F4FB]' : ''
+                          }`}
                       >
                         <span className="mt-0.5 text-[#173B78] shrink-0">
                           {n.type === 'BACKUP_DUE' ? <DatabaseBackup size={16} strokeWidth={1.75} /> : <CalendarClock size={16} strokeWidth={1.75} />}
@@ -182,3 +196,4 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     </header>
   );
 }
+

@@ -246,6 +246,7 @@
     "backToInvoices": "Back to invoices",
     "downloading": "Downloading...",
     "downloadPdf": "Download PDF",
+    "sendWhatsapp": "Send via WhatsApp",
     "issueInvoice": "Issue Invoice",
     "voidConfirm": "Are you sure you want to void this invoice?",
     "voidInvoice": "Void Invoice",

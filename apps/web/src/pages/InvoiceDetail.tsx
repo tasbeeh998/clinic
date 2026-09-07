@@ -6,6 +6,7 @@ import { invoicesService } from '../services/invoices.service';
 import { paymentsService, PaymentMethod } from '../services/payments.service';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../utils/dateFormat';
+import { normalizeDigits } from '../utils/numeral';
 
 export default function InvoiceDetail() {
   const { t, i18n } = useTranslation();
@@ -66,7 +67,7 @@ export default function InvoiceDetail() {
   });
 
   const reversePaymentMutation = useMutation({
-    mutationFn: ({ paymentId, reversalNotes }: { paymentId: string; reversalNotes?: string }) => 
+    mutationFn: ({ paymentId, reversalNotes }: { paymentId: string; reversalNotes?: string }) =>
       paymentsService.reversePayment(paymentId, reversalNotes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
@@ -76,7 +77,7 @@ export default function InvoiceDetail() {
   });
 
   const replacementMutation = useMutation({
-    mutationFn: (replacementData: { items: any[]; additionalCharges?: any[] }) => 
+    mutationFn: (replacementData: { items: any[]; additionalCharges?: any[] }) =>
       invoicesService.createReplacement(id!, replacementData),
     onSuccess: (newInvoice) => {
       navigate(`/invoices/${newInvoice.id}`);
@@ -87,6 +88,72 @@ export default function InvoiceDetail() {
   const [showReplacementForm, setShowReplacementForm] = useState(false);
   const [reversalNotes, setReversalNotes] = useState('');
   const [paymentToReverse, setPaymentToReverse] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Downloads the PDF (already localized server-side via `lang`) and saves it
+  // via a temporary <a> click — the standard no-library way to save a Blob.
+  const downloadPdfFile = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+    if (!invoice) return null;
+    setFormError(null);
+    setIsGeneratingPdf(true);
+    try {
+      const blob = await invoicesService.downloadInvoicePdf(invoice.id, i18n.language);
+      const fileName = `${invoice.invoiceNumber}.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return { blob, fileName };
+    } catch (err) {
+      setFormError(t('invoices.pdfDownloadFailed'));
+      return null;
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    downloadPdfFile();
+  };
+
+  // WhatsApp can't be handed a file via a wa.me link (no API for that), so:
+  // on devices/browsers that support the native share sheet with files
+  // (mainly mobile), we hand it the PDF directly and WhatsApp shows up as one
+  // of the share targets. Everywhere else, we fall back to downloading the
+  // file and opening a pre-filled wa.me chat, and the person attaches the
+  // file manually from their Downloads.
+  const handleSendWhatsapp = async () => {
+    const result = await downloadPdfFile();
+    if (!result || !invoice) return;
+    const { blob, fileName } = result;
+
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+    const canShareFile =
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [file] });
+
+    if (canShareFile) {
+      try {
+        await navigator.share({ files: [file] });
+        return;
+      } catch {
+        // User cancelled the share sheet, or it failed — fall through to the
+        // wa.me fallback below instead of leaving them with nothing.
+      }
+    }
+
+    const digitsOnly = (invoice.patient.phone || '').replace(/[^\d]/g, '');
+    const message =
+      i18n.language === 'ar'
+        ? `مرفق فاتورتكم رقم ${invoice.invoiceNumber} من مركز العيادات التخصصية.`
+        : `Attached is your invoice No. ${invoice.invoiceNumber} from Specialized Clinics Center.`;
+    window.open(`https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`, '_blank');
+  };
 
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +213,7 @@ export default function InvoiceDetail() {
               <h1 className="text-2xl font-bold text-[#111844]">{invoice.invoiceNumber}</h1>
               <p className="text-gray-600">{invoice.patient.fullNameAr}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-end">
               {invoice.status === 'DRAFT' && (
                 <button
                   onClick={() => statusMutation.mutate('ISSUED')}
@@ -175,6 +242,22 @@ export default function InvoiceDetail() {
                   className="px-4 py-2 border border-[#4B5694] text-[#4B5694] rounded-md hover:bg-blue-50 transition-colors"
                 >
                   {t('invoices.createReplacement')}
+                </button>
+              )}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingPdf ? t('invoices.downloading') : t('invoices.downloadPdf')}
+              </button>
+              {invoice.patient.phone && (
+                <button
+                  onClick={handleSendWhatsapp}
+                  disabled={isGeneratingPdf}
+                  className="px-4 py-2 bg-[#25D366] text-white rounded-md hover:bg-[#1ebe57] transition-colors disabled:opacity-50"
+                >
+                  {t('invoices.sendWhatsapp')}
                 </button>
               )}
             </div>
@@ -271,7 +354,7 @@ export default function InvoiceDetail() {
                     quantity: item.quantity,
                     unitPrice: parseFloat(item.unitPriceSnapshot),
                   }));
-                  replacementMutation.mutate({ 
+                  replacementMutation.mutate({
                     items: replacementItems,
                     additionalCharges: invoice.additionalCharges?.map(charge => ({
                       chargeType: charge.chargeType,
@@ -303,12 +386,13 @@ export default function InvoiceDetail() {
               <div className="flex-1 min-w-[120px]">
                 <label className="block text-sm text-gray-600 mb-1">{t('payments.amount')}</label>
                 <input
-                  type="number"
-                  step="0.001"
-                  min="0.001"
+                  type="text"
+                  inputMode="decimal"
+                  dir="ltr"
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
+                  onChange={(e) => setPaymentAmount(normalizeDigits(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] text-left"
+                  placeholder="0.000"
                   required
                 />
               </div>
@@ -384,9 +468,9 @@ export default function InvoiceDetail() {
                             />
                             <button
                               onClick={() => {
-                                reversePaymentMutation.mutate({ 
-                                  paymentId: payment.id, 
-                                  reversalNotes: reversalNotes || undefined 
+                                reversePaymentMutation.mutate({
+                                  paymentId: payment.id,
+                                  reversalNotes: reversalNotes || undefined
                                 });
                                 setPaymentToReverse(null);
                                 setReversalNotes('');

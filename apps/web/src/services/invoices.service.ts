@@ -182,6 +182,17 @@ class InvoicesService {
     return response.json();
   }
 
+  async downloadInvoicePdf(id: string, lang: string): Promise<Blob> {
+    const locale = lang === 'en' ? 'en' : 'ar';
+    const response = await fetch(`${apiBaseUrl}/invoices/${id}/pdf?lang=${locale}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to generate invoice PDF');
+    }
+    return response.blob();
+  }
+
   async createReplacement(invoiceId: string, replacementData: CreateReplacementDto): Promise<Invoice> {
     const response = await fetch(`${apiBaseUrl}/invoices/${invoiceId}/replacement`, {
       method: 'POST',
@@ -199,3 +210,5 @@ class InvoicesService {
 }
 
 export const invoicesService = new InvoicesService();
+
+

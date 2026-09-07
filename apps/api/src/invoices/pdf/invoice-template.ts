@@ -54,35 +54,36 @@ export interface InvoicePdfData {
 export type InvoiceLocale = 'ar' | 'en';
 
 // ── Fixed clinic identity — single-doctor clinic, never changes per invoice ──
-// NOTE: verify the English doctor-name transliteration below — only the Arabic
-// spelling was confirmed ("د. نداء بوخضور", without "محمد").
+// The doctor's name/title and the address/contact block are ALWAYS shown in
+// Arabic, even on the English invoice — this is a deliberate choice (not a
+// bug): only the section labels (Invoice No., Patient Information, ...) and
+// the values pulled from the invoice itself switch language. See
+// DOCTOR_FIXED / CONTACT_FIXED below, which are read regardless of `locale`.
 const FIXED: Record<InvoiceLocale, {
-  doctorName: string;
-  doctorTitle: string;
   clinicNameLine1: string;
   clinicNameLine2: string;
-  address: string;
-  phone: string;
-  mobile: string;
 }> = {
   ar: {
-    doctorName: 'د. نداء بوخضور',
-    doctorTitle: 'استشاري أمراض النساء والولادة والعقم',
     clinicNameLine1: 'مركز العيادات التخصصية',
     clinicNameLine2: 'Specialized Clinics Center',
-    address: 'حولي - قطعة 4 - شارع المعتصم - مركز العيادات التخصصية - الدور السادس',
-    phone: 'تلفون: 22650700 داخلي 607',
-    mobile: 'موبايل وواتساب: 60008977',
   },
   en: {
-    doctorName: 'Dr. Nedaa Bukhdour', // TODO: confirm exact English spelling
-    doctorTitle: 'Consultant Obstetrician, Gynecologist & Fertility Specialist',
     clinicNameLine1: 'Specialized Clinics Center',
     clinicNameLine2: 'مركز العيادات التخصصية',
-    address: "Hawally - Block 4 - Al-Mu'tasim Street - Specialized Clinics Center - 6th Floor",
-    phone: 'Tel.: 22650700 Ext. 607',
-    mobile: 'Mobile & WhatsApp: 60008977',
   },
+};
+
+// Always Arabic, regardless of invoice locale.
+const DOCTOR_FIXED = {
+  doctorName: 'د. نداء بوخضور',
+  doctorTitle: 'استشاري أمراض النساء والولادة والعقم',
+};
+
+// Always Arabic, regardless of invoice locale.
+const CONTACT_FIXED = {
+  address: 'حولي - قطعة 4 - شارع المعتصم - مركز العيادات التخصصية - الدور السادس',
+  phone: 'تلفون: 22650700 داخلي 607',
+  mobile: 'موبايل وواتساب: 60008977',
 };
 
 // ── UI copy per locale ──
@@ -171,6 +172,33 @@ function escapeHtml(input: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// ── Inline SVG icons (feather-style, stroke-based) ──
+// Headless Chromium in the Docker image has no color-emoji font installed,
+// so the Unicode emoji (📄📅👤...) this template used to render with just
+// showed up as empty boxes. Plain SVG paths need no font at all, so they
+// render identically everywhere Puppeteer runs.
+const ICON_PATHS: Record<string, string> = {
+  document:
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  calendar:
+    '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  clipboard:
+    '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>',
+  card: '<rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
+  heart:
+    '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+  phone:
+    '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  stethoscope: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  wallet:
+    '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
+};
+
+function icon(name: keyof typeof ICON_PATHS, size = 14): string {
+  return `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name]}</svg>`;
+}
+
 export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale = 'ar'): string {
   const t = T[locale];
   const fixed = FIXED[locale];
@@ -246,10 +274,11 @@ export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale
     background: #FFFFFF;
     position: relative;
   }
+  .ico { display: inline-block; vertical-align: middle; flex-shrink: 0; }
   .page {
-    padding: 32px 40px 40px;
+    padding: 12px 22px 14px;
     border: 1px solid #111844;
-    margin: 16px;
+    margin: 4px;
   }
   .watermark {
     position: fixed;
@@ -264,124 +293,126 @@ export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale
     transform: rotate(-25deg);
     z-index: 10;
   }
-  .top-bar { height: 6px; background: #111844; margin: -32px -40px 24px; }
+  .top-bar { height: 4px; background: #111844; margin: -12px -22px 10px; }
   .header {
     display: flex;
     align-items: center;
-    gap: 20px;
-    padding-bottom: 16px;
+    justify-content: center;
+    gap: 12px;
+    text-align: center;
+    padding-bottom: 7px;
     border-bottom: 3px double #111844;
-    margin-bottom: 16px;
+    margin-bottom: 7px;
   }
-  .header .logo { width: 80px; height: 80px; flex-shrink: 0; }
+  .header .logo { width: 44px; height: 44px; flex-shrink: 0; }
   .header .clinic-name-primary {
     font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 24px;
+    font-size: 16px;
     font-weight: bold;
     color: #111844;
   }
-  .header .clinic-name-secondary { font-size: 16px; color: #4B5694; margin-top: 2px; }
-  .doctor-block { text-align: center; margin-bottom: 18px; }
+  .header .clinic-name-secondary { font-size: 11px; color: #4B5694; margin-top: 1px; }
+  .doctor-block { text-align: center; margin-bottom: 7px; }
   .doctor-block .doctor-name {
     font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 16px;
+    font-size: 12px;
     font-weight: bold;
     color: #1F2430;
   }
   .doctor-block .doctor-title {
     font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 13px;
+    font-size: 10px;
     color: #4B5694;
-    margin-top: 2px;
+    margin-top: 1px;
   }
   .invoice-title {
     text-align: center;
-    font-size: 26px;
+    font-size: 16px;
     font-weight: bold;
     color: #111844;
     letter-spacing: 2px;
-    margin: 18px 0 20px;
+    margin: 7px 0 8px;
   }
   .invoice-title .arrow { color: #4B5694; font-weight: normal; padding: 0 10px; }
   .meta-box {
     display: flex;
     border: 1px solid #111844;
     border-radius: 8px;
-    margin-bottom: 18px;
+    margin-bottom: 8px;
     overflow: hidden;
   }
-  .meta-box .cell { flex: 1; padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+  .meta-box .cell { flex: 1; padding: 5px 12px; display: flex; align-items: center; gap: 7px; }
   .meta-box .cell:first-child { border-inline-end: 1px solid #E5E7EF; }
-  .meta-box .cell .icon { color: #111844; font-size: 16px; }
-  .meta-box .cell .label { font-size: 11px; color: #8991A6; display: block; }
-  .meta-box .cell .value { font-size: 14px; font-weight: bold; color: #111844; }
-  .patient-box { position: relative; border: 1px solid #111844; border-radius: 8px; padding: 20px 20px 16px; margin-bottom: 18px; }
+  .meta-box .cell .ico { color: #111844; }
+  .meta-box .cell .label { font-size: 9px; color: #8991A6; display: block; }
+  .meta-box .cell .value { font-size: 12px; font-weight: bold; color: #111844; }
+  .patient-box { position: relative; border: 1px solid #111844; border-radius: 8px; padding: 11px 14px 9px; margin-bottom: 8px; }
   .patient-box .connector {
     position: absolute;
-    top: -14px;
+    top: -11px;
     left: 50%;
     transform: translateX(-50%);
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: #EAF0FB;
     border: 1px solid #111844;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    color: #111844;
   }
   .patient-box .patient-title {
     text-align: center;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: bold;
     color: #111844;
     letter-spacing: 1px;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
+    margin-bottom: 7px;
+    padding-bottom: 5px;
     border-bottom: 1px solid #E5E7EF;
   }
-  .patient-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
-  .patient-grid .field { display: flex; align-items: flex-start; gap: 8px; }
-  .patient-grid .field .icon { color: #111844; font-size: 15px; margin-top: 1px; }
-  .patient-grid .field .label { font-size: 11px; color: #8991A6; margin-bottom: 2px; }
-  .patient-grid .field .value { font-size: 14px; font-weight: bold; color: #1F2430; }
-  table.items { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-  table.items th { background: #111844; color: #FFFFFF; padding: 9px 10px; font-size: 12px; text-align: ${isRtl ? 'right' : 'left'}; }
-  table.items td { padding: 9px 10px; font-size: 13px; border-bottom: 1px solid #E5E7EF; }
+  .patient-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
+  .patient-grid .field { display: flex; align-items: flex-start; gap: 7px; }
+  .patient-grid .field .ico { color: #111844; margin-top: 1px; }
+  .patient-grid .field .label { font-size: 9px; color: #8991A6; margin-bottom: 1px; }
+  .patient-grid .field .value { font-size: 12px; font-weight: bold; color: #1F2430; }
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  table.items th { background: #111844; color: #FFFFFF; padding: 5px 8px; font-size: 10px; text-align: ${isRtl ? 'right' : 'left'}; }
+  table.items td { padding: 5px 8px; font-size: 11px; border-bottom: 1px solid #E5E7EF; }
   table.items tr:nth-child(even) td { background: #F6F7FA; }
   table.items tr.charge-row td { background: #FFF3E0; font-style: italic; }
   .col-qty, .col-price, .col-total, .col-code { text-align: center; }
   table.items th.col-qty, table.items th.col-price, table.items th.col-total, table.items th.col-code { text-align: center; }
   .replacement-note {
-    text-align: center; font-size: 12px; color: #C4362B; font-weight: bold;
-    margin-bottom: 12px; padding: 8px; border: 1px solid #C4362B; border-radius: 4px; background: #FEF2F2;
+    text-align: center; font-size: 11px; color: #C4362B; font-weight: bold;
+    margin-bottom: 10px; padding: 6px; border: 1px solid #C4362B; border-radius: 4px; background: #FEF2F2;
   }
-  .bottom-row { display: flex; gap: 20px; margin-bottom: 18px; }
+  .bottom-row { display: flex; gap: 12px; margin-bottom: 8px; page-break-inside: avoid; }
   .totals-box {
-    flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 14px 18px;
-    display: flex; align-items: center; gap: 16px;
+    flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 7px 12px;
+    display: flex; align-items: center; gap: 10px;
   }
   .totals-box .totals-icon {
-    width: 40px; height: 40px; border-radius: 50%; background: #EAF0FB;
-    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 50%; background: #EAF0FB; color: #111844;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .totals-box .totals-rows { flex: 1; }
-  .totals-box .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; color: #1F2430; }
+  .totals-box .row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 11px; color: #1F2430; }
   .totals-box .row.remaining .value { color: #C4362B; font-weight: bold; }
   .totals-box .row .value { font-weight: bold; }
-  .status-row { display: flex; gap: 12px; flex: 1; }
-  .status-box { flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 14px 12px; text-align: center; }
-  .status-box .label { font-size: 11px; color: #8991A6; margin-bottom: 6px; letter-spacing: 0.5px; }
-  .status-box .value { font-size: 15px; font-weight: bold; color: #111844; }
-  .thanks { text-align: center; font-style: italic; font-size: 13px; color: #4B5694; margin-bottom: 18px; }
-  .footer-box { border: 1px solid #111844; border-radius: 8px; padding: 14px 20px; text-align: center; font-size: 11px; color: #4B5694; }
+  .status-row { display: flex; gap: 8px; flex: 1; }
+  .status-box { flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 7px 8px; text-align: center; }
+  .status-box .label { font-size: 9px; color: #8991A6; margin-bottom: 3px; letter-spacing: 0.5px; }
+  .status-box .value { font-size: 12px; font-weight: bold; color: #111844; }
+  .thanks { text-align: center; font-style: italic; font-size: 11px; color: #4B5694; margin-bottom: 7px; }
+  .footer-box { border: 1px solid #111844; border-radius: 8px; padding: 7px 14px; text-align: center; font-size: 9px; color: #4B5694; page-break-inside: avoid; }
   .footer-box .clinic-name-primary {
     font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 14px; font-weight: bold; color: #111844; margin-bottom: 2px;
+    font-size: 11px; font-weight: bold; color: #111844; margin-bottom: 1px;
   }
-  .footer-box .clinic-name-secondary { font-size: 12px; font-weight: bold; color: #111844; margin-bottom: 8px; }
-  .footer-box .line { margin-bottom: 2px; }
+  .footer-box .clinic-name-secondary { font-size: 10px; font-weight: bold; color: #111844; margin-bottom: 4px; }
+  .footer-box .line { margin-bottom: 1px; }
 </style>
 </head>
 <body>
@@ -397,51 +428,53 @@ export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale
       </div>
     </div>
 
+    <!-- Doctor name/title are always Arabic, regardless of invoice locale. -->
     <div class="doctor-block">
-      <div class="doctor-name">${fixed.doctorName}</div>
-      <div class="doctor-title">${fixed.doctorTitle}</div>
+      <div class="doctor-name">${DOCTOR_FIXED.doctorName}</div>
+      <div class="doctor-title">${DOCTOR_FIXED.doctorTitle}</div>
     </div>
 
     <div class="invoice-title"><span class="arrow">${isRtl ? '&#8592;' : '&#8594;'}</span>${t.invoiceTitle}<span class="arrow">${isRtl ? '&#8594;' : '&#8592;'}</span></div>
 
     <div class="meta-box">
       <div class="cell">
-        <span class="icon">&#128196;</span>
+        ${icon('document')}
         <div><span class="label">${t.invoiceNo}</span><span class="value">${escapeHtml(invoice.invoiceNumber)}</span></div>
       </div>
       <div class="cell">
-        <span class="icon">&#128197;</span>
+        ${icon('calendar')}
         <div><span class="label">${t.date}</span><span class="value">${formatDate(invoice.issuedAt || invoice.createdAt)}</span></div>
       </div>
     </div>
 
     <div class="patient-box">
-      <div class="connector">&#128100;</div>
+      <div class="connector">${icon('user', 13)}</div>
       <div class="patient-title">${t.patientInfoTitle}</div>
       <div class="patient-grid">
         <div class="field">
-          <span class="icon">&#128100;</span>
+          ${icon('user')}
           <div><div class="label">${t.patientName}</div><div class="value">${escapeHtml(invoice.patient.fullNameAr)}</div></div>
         </div>
         <div class="field">
-          <span class="icon">&#128203;</span>
+          ${icon('clipboard')}
           <div><div class="label">${t.visitType}</div><div class="value">${visitTypeLabel}</div></div>
         </div>
         <div class="field">
-          <span class="icon">&#127380;</span>
+          ${icon('card')}
           <div><div class="label">${t.civilId}</div><div class="value">${escapeHtml(invoice.patient.civilId)}</div></div>
         </div>
         <div class="field">
-          <span class="icon">&#10084;&#65039;</span>
+          ${icon('heart')}
           <div><div class="label">${t.diagnosis}</div><div class="value">${diagnosis}</div></div>
         </div>
         <div class="field">
-          <span class="icon">&#128222;</span>
+          ${icon('phone')}
           <div><div class="label">${t.mobileNumber}</div><div class="value">${invoice.patient.phone ? escapeHtml(invoice.patient.phone) : t.dash}</div></div>
         </div>
         <div class="field">
-          <span class="icon">&#129658;</span>
-          <div><div class="label">${t.doctor}</div><div class="value">${fixed.doctorName}</div></div>
+          ${icon('stethoscope')}
+          <!-- Doctor name is always Arabic here too, regardless of invoice locale. -->
+          <div><div class="label">${t.doctor}</div><div class="value">${DOCTOR_FIXED.doctorName}</div></div>
         </div>
       </div>
     </div>
@@ -466,7 +499,7 @@ export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale
 
     <div class="bottom-row">
       <div class="totals-box">
-        <div class="totals-icon">&#128179;</div>
+        <div class="totals-icon">${icon('wallet', 16)}</div>
         <div class="totals-rows">
           <div class="row"><span>${t.subtotal}</span><span class="value">${formatMoney(invoice.subtotal)} KD</span></div>
           ${chargesTotalsRows}
@@ -489,12 +522,13 @@ export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale
 
     <div class="thanks">${t.thanks}</div>
 
+    <!-- Address / phone / mobile are always Arabic, regardless of invoice locale. -->
     <div class="footer-box">
       <div class="clinic-name-primary">${fixed.clinicNameLine1}</div>
       <div class="clinic-name-secondary">${fixed.clinicNameLine2}</div>
-      <div class="line">${fixed.address}</div>
-      <div class="line">${fixed.phone}</div>
-      <div class="line">${fixed.mobile}</div>
+      <div class="line">${CONTACT_FIXED.address}</div>
+      <div class="line">${CONTACT_FIXED.phone}</div>
+      <div class="line">${CONTACT_FIXED.mobile}</div>
     </div>
   </div>
 </body>
@@ -517,3 +551,4 @@ export function buildWhatsAppShareUrl(
       : `Attached is your invoice No. ${invoiceNumber} from Specialized Clinics Center.`;
   return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;
 }
+

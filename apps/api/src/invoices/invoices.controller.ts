@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, ParseUUIDPipe, Request, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards, ParseUUIDPipe, Request, Res, HttpCode } from '@nestjs/common';
+import { Response } from 'express';
 import { InvoicesService } from './invoices.service';
+import { InvoicePdfService } from './pdf/invoice-pdf.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { AddChargeDto } from './dto/add-charge.dto';
@@ -12,7 +14,10 @@ import { UserRole, InvoiceStatus } from '@prisma/client';
 @Controller('invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    private readonly invoicePdfService: InvoicePdfService,
+  ) { }
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
@@ -42,6 +47,27 @@ export class InvoicesController {
   @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.invoicesService.findOne(id);
+  }
+
+  // Locale comes from the query string because the backend has no notion of
+  // the frontend's active react-i18next language on its own — whatever
+  // triggers this (download button, WhatsApp share) must pass ?lang=ar|en.
+  @Get(':id/pdf')
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
+  async downloadPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('lang') lang: string | undefined,
+    @Res() res: Response,
+  ) {
+    const locale = lang === 'en' ? 'en' : 'ar';
+    const invoice = await this.invoicesService.findOne(id);
+    const pdfBuffer = await this.invoicePdfService.generatePdf(id, locale);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${invoice.invoiceNumber}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
   }
 
   @Patch(':id/status')
