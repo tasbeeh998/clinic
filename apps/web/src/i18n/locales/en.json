@@ -45,7 +45,42 @@
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "markAllRead": "Mark all read",
-    "noNotifications": "No notifications"
+    "noNotifications": "No notifications",
+    "breadcrumb": "Breadcrumb",
+    "confirm": "Confirm",
+    "pageLoading": "Loading page...",
+    "retry": "Try again",
+    "emptyDescription": "There is nothing to display here yet.",
+    "required": "Required"
+  },
+  "feedback": {
+    "notifications": "Notifications",
+    "patientCreated": "Patient created successfully.",
+    "patientUpdated": "Patient updated successfully.",
+    "visitCreated": "Visit created successfully.",
+    "appointmentCreated": "Appointment created successfully.",
+    "appointmentStatusUpdated": "Appointment status updated successfully.",
+    "appointmentStatusFailed": "Failed to update appointment status.",
+    "appointmentCancelled": "Appointment cancelled successfully.",
+    "appointmentCancelFailed": "Failed to cancel appointment.",
+    "serviceCreated": "Service created successfully.",
+    "serviceUpdated": "Service updated successfully.",
+    "serviceDeactivated": "Service deactivated successfully.",
+    "serviceActivated": "Service activated successfully.",
+    "serviceStatusFailed": "Failed to update service status.",
+    "invoiceStatusUpdated": "Invoice status updated successfully.",
+    "invoiceStatusFailed": "Failed to update invoice status.",
+    "paymentRecorded": "Payment recorded successfully.",
+    "paymentRecordFailed": "Failed to record payment.",
+    "paymentReversed": "Payment reversed successfully.",
+    "paymentReverseFailed": "Failed to reverse payment.",
+    "invoiceReplaced": "Replacement invoice created successfully.",
+    "invoiceReplacementFailed": "Failed to create replacement invoice.",
+    "reportExported": "Report exported successfully.",
+    "backupCreated": "Backup created successfully.",
+    "backupFailed": "Failed to create backup.",
+    "backupRestored": "Backup restored successfully.",
+    "restoreFailed": "Failed to restore backup."
   },
   "roles": {
     "admin": "Admin",
@@ -66,7 +101,9 @@
     "forgotPassword": "Forgot password?",
     "loggingIn": "Signing in...",
     "submit": "Sign In",
-    "invalidCredentials": "Incorrect email or password"
+    "invalidCredentials": "Incorrect email or password",
+    "tooManyAttempts": "Too many login attempts. Please try again later.",
+    "accountInactive": "Your account has been deactivated. Please contact an administrator."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -234,6 +271,7 @@
     "paymentStatusLabel": "Payment Status",
     "addOneServiceError": "Add at least one service",
     "noLinkedVisitError": "Cannot create an invoice without a linked visit",
+    "invalidMoneyPrecision": "Amounts must contain no more than 2 decimal places",
     "mustStartFromVisit": "Cannot create an invoice without selecting a visit. Please start from the visit page.",
     "newInvoice": "New Invoice",
     "chooseService": "Choose a service...",
@@ -248,6 +286,7 @@
     "downloadPdf": "Download PDF",
     "sendWhatsapp": "Send via WhatsApp",
     "issueInvoice": "Issue Invoice",
+    "issueConfirm": "Issuing this invoice will finalize it. Continue?",
     "voidConfirm": "Are you sure you want to void this invoice?",
     "voidInvoice": "Void Invoice",
     "createdDate": "Created Date",
@@ -268,7 +307,9 @@
     "createReplacementTitle": "Create Replacement Invoice",
     "replacementNote": "The current invoice will be voided and a new replacement invoice created.",
     "replacementConfirm": "Are you sure you want to create a replacement invoice?",
-    "createReplacementBtn": "Create Replacement Invoice"
+    "createReplacementBtn": "Create Replacement Invoice",
+    "replacementInvoice": "View replacement invoice",
+    "replacedInvoice": "View original invoice"
   },
   "payments": {
     "methodCash": "Cash",
@@ -289,6 +330,7 @@
     "reversePayment": "Reverse Payment",
     "reversalReasonPlaceholder": "Reversal reason",
     "confirmReversal": "Confirm"
+    ,"reverseConfirm": "This payment will be reversed and excluded from the invoice balance. Continue?"
   },
   "appointments": {
     "loadError": "Failed to load appointment data",
@@ -357,7 +399,8 @@
     "exportPdf": "Export PDF",
     "exportExcel": "Export Excel",
     "exporting": "Exporting...",
-    "exportError": "Failed to export report"
+    "exportError": "Failed to export report",
+    "loadError": "Failed to load report data"
   },
   "settings": {
     "subtitle": "Manage system settings, permissions, notifications, backups, and security",

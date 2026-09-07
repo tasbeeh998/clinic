@@ -1,14 +1,23 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { appointmentsService, UpdateStatusDto, CancelAppointmentDto } from '../services/appointments.service';
 import { formatDateTime } from '../utils/dateFormat';
+import { useTranslation } from 'react-i18next';
+import { getReturnTo, preserveListState } from '../utils/listState';
+import { useToast } from '../contexts/ToastContext';
+import PageHeader from '../components/PageHeader';
+import Skeleton from '../components/Skeleton';
 
 export default function AppointmentDetail() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const returnTo = getReturnTo(searchParams.toString(), '/appointments');
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -26,6 +35,10 @@ export default function AppointmentDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['appointment', id] });
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      showToast({ type: 'success', message: t('feedback.appointmentStatusUpdated') });
+    },
+    onError: (error: Error) => {
+      showToast({ type: 'error', message: error.message || t('feedback.appointmentStatusFailed') });
     },
   });
 
@@ -38,6 +51,10 @@ export default function AppointmentDetail() {
       setCancelReasonType('');
       queryClient.invalidateQueries({ queryKey: ['appointment', id] });
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      showToast({ type: 'success', message: t('feedback.appointmentCancelled') });
+    },
+    onError: (error: Error) => {
+      showToast({ type: 'error', message: error.message || t('feedback.appointmentCancelFailed') });
     },
   });
 
@@ -59,7 +76,7 @@ export default function AppointmentDetail() {
   };
 
   const handleStatusChange = (newStatus: string) => {
-    updateStatusMutation.mutate({ id: id!, data: { status: newStatus as 'BOOKED' | 'CONFIRMED' | 'DONE' | 'CANCELLED' | 'NO_SHOW' } });
+    updateStatusMutation.mutate({ id: id!, data: { status: newStatus as UpdateStatusDto['status'] } });
   };
 
   const handleCancel = () => {
@@ -77,10 +94,7 @@ export default function AppointmentDetail() {
     return (
       <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
         <div className="container mx-auto px-4 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
-          </div>
+          <div className="ui-card p-6 space-y-3"><Skeleton className="h-8 rounded-lg" /><Skeleton className="h-64 rounded-lg" /></div>
         </div>
       </div>
     );
@@ -90,9 +104,7 @@ export default function AppointmentDetail() {
     return (
       <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
         <div className="container mx-auto px-4 py-8">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {t('appointments.detailLoadError')}
-          </div>
+          <div className="ui-card p-6 text-center text-[#C4362B] text-sm" role="alert">{t('appointments.loadError')}</div>
         </div>
       </div>
     );
@@ -101,216 +113,204 @@ export default function AppointmentDetail() {
   return (
     <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
       <div className="container mx-auto px-4 py-8">
-        {/* Breadcrumb */}
-        <div className="mb-6 text-sm text-gray-600">
-          <button onClick={() => navigate('/appointments')} className="hover:text-[#111844]">
-            {t('sidebar.appointments')}
-          </button>
-          <span className="mx-2">/</span>
-          <span className="text-gray-900">{t('appointments.detailsTitle')}</span>
-        </div>
+        <PageHeader
+          title={t('appointments.detailsTitle')}
+          breadcrumbs={[{ label: t('sidebar.appointments'), href: returnTo }, { label: t('appointments.detailsTitle') }]}
+          actions={<button onClick={() => navigate(returnTo)} className="btn-primary px-4 py-2">{t('common.back')}</button>}
+        />
 
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">{t('appointments.detailsTitle')}</h1>
-          <button
-            onClick={() => navigate('/appointments')}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-gray-700 sm:w-auto sm:h-auto sm:rounded-md sm:shadow-none sm:bg-gray-200 sm:px-4 sm:py-2 sm:hover:bg-gray-300 transition-colors"
-          >
-            <span className="sm:hidden">{i18n.language === 'ar' ? '›' : '‹'}</span>
-            <span className="hidden sm:inline">{t('common.back')}</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Appointment Details */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="space-y-6">
-                {/* Patient Info */}
-                <div className="border-b border-gray-200 pb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.patientInfo')}</h2>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-gray-500 block mb-1">{t('appointments.patientName')}</label>
-                      <p className="font-medium text-gray-900">{appointment.patient.fullNameAr}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-500 block mb-1">{t('patients.civilId')}</label>
-                      <p className="font-medium text-gray-900">{appointment.patient.civilId}</p>
-                    </div>
-                    {appointment.patient.phone && (
-                      <div>
-                        <label className="text-sm text-gray-500 block mb-1">{t('patients.phone')}</label>
-                        <p className="text-gray-900">{appointment.patient.phone}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Appointment Info */}
-                <div className="border-b border-gray-200 pb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.appointmentInfo')}</h2>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm text-gray-500 block mb-1">{t('appointments.dateTimeLabel')}</label>
-                      <p className="font-medium text-gray-900">{formatDateTime(appointment.scheduledAt, i18n.language)}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-500 block mb-1">{t('common.status')}</label>
-                      {getStatusBadge(appointment.status)}
-                    </div>
-                    {appointment.notes && (
-                      <div>
-                        <label className="text-sm text-gray-500 block mb-1">{t('appointments.notes')}</label>
-                        <p className="text-gray-900">{appointment.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Audit Info */}
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.creationInfo')}</h2>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm text-gray-500 block mb-1">{t('appointments.createdDate')}</label>
-                      <p className="text-gray-900">{formatDateTime(appointment.createdAt, i18n.language)}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions Panel */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-md p-6 sticky top-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('common.actions')}</h3>
-              <div className="space-y-3">
-                {canConfirm && (
-                  <button
-                    onClick={() => handleStatusChange('CONFIRMED')}
-                    disabled={updateStatusMutation.isPending}
-                    className="w-full py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    {t('appointments.confirmAppointment')}
-                  </button>
-                )}
-
-                {canMarkDone && (
-                  <button
-                    onClick={() => handleStatusChange('DONE')}
-                    disabled={updateStatusMutation.isPending}
-                    className="w-full py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    {t('appointments.markDone')}
-                  </button>
-                )}
-
-                {canCancel && (
-                  <button
-                    onClick={() => setShowCancelDialog(true)}
-                    className="w-full py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-                  >
-                    {t('appointments.cancelAppointment')}
-                  </button>
-                )}
-
-                {canMarkNoShow && (
-                  <button
-                    onClick={() => handleStatusChange('NO_SHOW')}
-                    disabled={updateStatusMutation.isPending}
-                    className="w-full py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors disabled:opacity-50"
-                  >
-                    {t('appointments.statusNoShow')}
-                  </button>
-                )}
-
-                <button
-                  onClick={() => navigate(`/patients/${appointment.patient.id}`)}
-                  className="w-full py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  {t('appointments.viewMedicalRecord')}
-                </button>
-              </div>
-            </div>
-          </div>
+   ointment.patient.fullNameAr}</p>
         </div>
-
-        {/* Cancel Dialog */}
-        {showCancelDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-md p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.cancelReasonTitle')}</h3>
-
-              <div className="space-y-3 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setCancelReasonType('طلب المريضة')}
-                  className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'طلب المريضة'
-                      ? 'border-[#111844] bg-[#111844] text-white'
-                      : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                >
-                  {t('appointments.reasonPatientRequest')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCancelReasonType('تعارض بالمواعيد')}
-                  className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'تعارض بالمواعيد'
-                      ? 'border-[#111844] bg-[#111844] text-white'
-                      : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                >
-                  {t('appointments.reasonScheduleConflict')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCancelReasonType('other')}
-                  className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'other'
-                      ? 'border-[#111844] bg-[#111844] text-white'
-                      : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                >
-                  {t('appointments.reasonOther')}
-                </button>
-              </div>
-
-              {cancelReasonType === 'other' && (
-                <textarea
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder={t('appointments.writeReasonPlaceholder')}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] mb-4"
-                />
-              )}
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowCancelDialog(false);
-                    setCancelReason('');
-                    setCancelReasonType('');
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  onClick={handleCancel}
-                  disabled={!cancelReasonType || (cancelReasonType === 'other' && !cancelReason) || cancelMutation.isPending}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('appointments.confirmCancel')}
-                </button>
-              </div>
-            </div>
+        <div>
+          <label className="text-sm text-gray-500 block mb-1">{t('patients.civilId')}</label>
+          <p className="font-medium text-gray-900">{appointment.patient.civilId}</p>
+        </div>
+        {appointment.patient.phone && (
+          <div>
+            <label className="text-sm text-gray-500 block mb-1">{t('patients.phone')}</label>
+            <p className="text-gray-900">{appointment.patient.phone}</p>
           </div>
         )}
       </div>
     </div>
-  );
+
+                {/* Appointment Info */ }
+  <div className="border-b border-gray-200 pb-6">
+    <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.appointmentInfo')}</h2>
+    <div className="space-y-4">
+      <div>
+        <label className="text-sm text-gray-500 block mb-1">{t('appointments.dateTimeLabel')}</label>
+        <p className="font-medium text-gray-900">{formatDateTime(appointment.scheduledAt, i18n.language)}</p>
+      </div>
+      <div>
+        <label className="text-sm text-gray-500 block mb-1">{t('common.status')}</label>
+        {getStatusBadge(appointment.status)}
+      </div>
+      {appointment.notes && (
+        <div>
+          <label className="text-sm text-gray-500 block mb-1">{t('appointments.notes')}</label>
+          <p className="text-gray-900">{appointment.notes}</p>
+        </div>
+      )}
+    </div>
+  </div>
+
+  {/* Audit Info */ }
+  <div>
+    <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.creationInfo')}</h2>
+    <div className="space-y-4">
+      <div>
+        <label className="text-sm text-gray-500 block mb-1">{t('appointments.createdDate')}</label>
+        <p className="text-gray-900">{formatDateTime(appointment.createdAt, i18n.language)}</p>
+      </div>
+    </div>
+  </div>
+              </div >
+            </div >
+          </div >
+
+    {/* Actions Panel */ }
+    < div className = "lg:col-span-1" >
+      <div className="bg-white rounded-lg shadow-md p-6 sticky top-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('common.actions')}</h3>
+        <div className="space-y-3">
+          {canConfirm && (
+            <button
+              onClick={() => handleStatusChange('CONFIRMED')}
+              disabled={updateStatusMutation.isPending}
+              className="w-full py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {t('appointments.confirmAppointment')}
+            </button>
+          )}
+
+          {canMarkDone && (
+            <button
+              onClick={() => handleStatusChange('DONE')}
+              disabled={updateStatusMutation.isPending}
+              className="w-full py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {t('appointments.markDone')}
+            </button>
+          )}
+
+          {canCancel && (
+            <button
+              onClick={() => setShowCancelDialog(true)}
+              className="w-full py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              {t('appointments.cancelAppointment')}
+            </button>
+          )}
+
+          {canMarkNoShow && (
+            <button
+              onClick={() => handleStatusChange('NO_SHOW')}
+              disabled={updateStatusMutation.isPending}
+              className="w-full py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors disabled:opacity-50"
+            >
+              {t('appointments.statusNoShow')}
+            </button>
+          )}
+
+          <Link
+            to={preserveListState(`/patients/${appointment.patient.id}`, { pathname: `/appointments/${appointment.id}`, search: '' })}
+            className="w-full py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            عرض الملف الطبي
+          </Link>
+        </div>
+      </div>
+          </div >
+        </div >
+
+    {/* Cancel Dialog */ }
+  {
+    showCancelDialog && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-md p-6 max-w-md w-full mx-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.cancelReasonTitle')}</h3>
+
+          <div className="space-y-3 mb-4">
+            <button
+              type="button"
+              onClick={() => setCancelReasonType('طلب المريضة')}
+              className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'طلب المريضة'
+                ? 'border-[#111844] bg-[#111844] text-white'
+                : 'border-gray-300 hover:bg-gray-50'
+                }`}
+            >
+              {t('appointments.reasonPatientRequest')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCancelReasonType('تعارض بالمواعيد')}
+              className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'تعارض بالمواعيد'
+                ? 'border-[#111844] bg-[#111844] text-white'
+                : 'border-gray-300 hover:bg-gray-50'
+                }`}
+            >         <div className="rounded-lg bg-white p-4 shadow-md sm:p-6">
+                <div className="space-y-6">
+                  {/* Patient Info */}
+                  <div className="border-b border-gray-200 pb-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('appointments.patientInfo')}</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm text-gray-500 block mb-1">{t('appointments.patientName')}</label>
+                        <p className="font-medium text-gray-900">{app
+                  {t('appointments.reasonScheduleConflict')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCancelReasonType('other')}
+                          className={`w-full py-2 px-4 rounded-md border ${cancelReasonType === 'other'
+                            ? 'border-[#111844] bg-[#111844] text-white'
+                            : 'border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                          {t('appointments.reasonOther')}
+                        </button>
+                      </div>
+
+                      {cancelReasonType === 'other' && (
+                        <textarea
+                          value={cancelReason}
+                          onChange={(e) => setCancelReason(e.target.value)}
+                          placeholder={t('appointments.writeReasonPlaceholder')}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] mb-4"
+                        />
+                      )}
+
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            setShowCancelDialog(false);
+                            setCancelReason('');
+                            setCancelReasonType('');
+                          }}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                        >
+                          {t('common.cancel')}
+                        </button>
+                        <button
+                          onClick={handleCancel}
+                          disabled={!cancelReasonType || (cancelReasonType === 'other' && !cancelReason) || cancelMutation.isPending}
+                          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {t('appointments.confirmCancel')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+        )}
+                </div>
+              </div>
+              );
 }
+
+
 

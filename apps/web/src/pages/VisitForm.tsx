@@ -1,19 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
 import { visitsService, CreateVisitDto } from '../services/visits.service';
 import { patientsService } from '../services/patients.service';
 import { appointmentsService } from '../services/appointments.service';
-import DateTimeInput from '../components/DateTimeInput';
+import { useTranslation } from 'react-i18next';
+import { getReturnTo } from '../utils/listState';
+import PageHeader from '../components/PageHeader';
+import { useToast } from '../contexts/ToastContext';
 
 export default function VisitForm() {
-  const { i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const prefillPatientId = searchParams.get('patientId') || '';
   const prefillAppointmentId = searchParams.get('appointmentId') || '';
+  const returnTo = getReturnTo(searchParams.toString(), prefillPatientId ? `/patients/${prefillPatientId}` : '/visits');
+  const { showToast } = useToast();
 
   const [formData, setFormData] = useState<CreateVisitDto>({
     patientId: prefillPatientId,
@@ -44,20 +47,22 @@ export default function VisitForm() {
   });
 
   // Pre-fill patient from appointment if available
-  useState(() => {
+  useEffect(() => {
     if (appointmentData && !prefillPatientId) {
       setFormData((prev) => ({ ...prev, patientId: appointmentData.patientId }));
       setPatientSearch(appointmentData.patient.fullNameAr);
     }
-  });
+  }, [appointmentData, prefillPatientId]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreateVisitDto) => visitsService.createVisit(data),
     onSuccess: (data) => {
-      navigate(`/patients/${data.patientId}`);
+      showToast({ type: 'success', message: t('feedback.visitCreated') });
+      navigate(`/patients/${data.patientId}?returnTo=${encodeURIComponent(returnTo)}`);
     },
     onError: (error: Error) => {
-      setErrors({ general: error.message || (isEn ? 'Failed to create visit' : 'فشل في إنشاء الزيارة') });
+      showToast({ type: 'error', message: error.message || t('visits.createError') });
+      setErrors({ general: error.message || 'فشل في إنشاء الزيارة' });
     },
   });
 
@@ -65,22 +70,22 @@ export default function VisitForm() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.patientId) {
-      newErrors.patientId = isEn ? 'Patient is required' : 'المريض مطلوب';
+      newErrors.patientId = 'المريض مطلوب';
     }
 
     if (!formData.type) {
-      newErrors.type = isEn ? 'Visit type is required' : 'نوع الزيارة مطلوب';
+      newErrors.type = 'نوع الزيارة مطلوب';
     }
 
     if (formData.visitDate) {
       const visitDate = new Date(formData.visitDate);
       if (isNaN(visitDate.getTime())) {
-        newErrors.visitDate = isEn ? 'Invalid date/time' : 'تاريخ ووقت غير صالح';
+        newErrors.visitDate = 'تاريخ ووقت غير صالح';
       }
     }
 
     if (formData.notes && formData.notes.length > 1000) {
-      newErrors.notes = isEn ? 'Notes must not exceed 1000 characters' : 'الملاحظات يجب أن لا تتجاوز 1000 حرف';
+      newErrors.notes = 'الملاحظات يجب أن لا تتجاوز 1000 حرف';
     }
 
     setErrors(newErrors);
@@ -94,14 +99,7 @@ export default function VisitForm() {
       return;
     }
 
-    // Don't send an empty string for appointmentId — the backend expects
-    // either a valid UUID or the field omitted entirely.
-    const payload: CreateVisitDto = { ...formData };
-    if (!payload.appointmentId) {
-      delete payload.appointmentId;
-    }
-
-    createMutation.mutate(payload);
+    createMutation.mutate(formData);
   };
 
   const handlePatientSelect = (patientId: string, patientName: string) => {
@@ -112,28 +110,23 @@ export default function VisitForm() {
 
   const handleCancel = () => {
     if (formData.patientId) {
-      navigate(`/patients/${formData.patientId}`);
+      navigate(returnTo);
     } else {
-      navigate('/visits');
+      navigate(returnTo);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA]">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">{isEn ? 'New Visit' : 'زيارة جديدة'}</h1>
-          <button
-            onClick={handleCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            {isEn ? 'Cancel' : 'إلغاء'}
-          </button>
-        </div>
+    <div className="min-h-screen bg-[#F6F7FA] dir-rtl">
+      <div className="container mx-auto px-4 py-5 sm:py-8">
+        <PageHeader
+          title={t('visits.newVisit')}
+          breadcrumbs={[{ label: t('sidebar.visits'), href: returnTo }, { label: t('visits.newVisit') }]}
+          actions={<button onClick={handleCancel} className="btn-primary px-4 py-2">{t('common.cancel')}</button>}
+        />
 
         {/* Form */}
-        <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl">
+        <div className="w-full max-w-2xl rounded-lg bg-white p-4 shadow-md sm:p-6">
           {errors.general && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
               {errors.general}
@@ -144,7 +137,7 @@ export default function VisitForm() {
             {/* Patient Selection */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Patient' : 'المريض'} <span className="text-red-500">*</span>
+                المريض <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -154,9 +147,10 @@ export default function VisitForm() {
                   setShowPatientDropdown(true);
                 }}
                 onFocus={() => setShowPatientDropdown(true)}
-                placeholder={isEn ? 'Search by name, civil ID, or phone...' : 'ابحث بالاسم أو الرقم المدني أو الهاتف...'}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.patientId ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                placeholder="ابحث بالاسم أو الرقم المدني أو الهاتف..."
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
+                  errors.patientId ? 'border-red-500' : 'border-gray-300'
+                }`}
                 disabled={!!prefillPatientId}
               />
               {errors.patientId && (
@@ -186,17 +180,18 @@ export default function VisitForm() {
             {/* Visit Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Visit Type' : 'نوع الزيارة'} <span className="text-red-500">*</span>
+                نوع الزيارة <span className="text-red-500">*</span>
               </label>
               <select
                 value={formData.type}
                 onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value as 'CHECKUP' | 'FOLLOW_UP' | 'OTHER' }))}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.type ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
+                  errors.type ? 'border-red-500' : 'border-gray-300'
+                }`}
               >
-                <option value="CHECKUP">{isEn ? 'Checkup' : 'كشف'}</option>
-                <option value="FOLLOW_UP">{isEn ? 'Follow-up' : 'متابعة'}</option>
-                <option value="OTHER">{isEn ? 'Other' : 'أخرى'}</option>
+                <option value="CHECKUP">كشف</option>
+                <option value="FOLLOW_UP">متابعة</option>
+                <option value="OTHER">أخرى</option>
               </select>
               {errors.type && (
                 <p className="mt-1 text-sm text-red-600">{errors.type}</p>
@@ -206,13 +201,15 @@ export default function VisitForm() {
             {/* Date and Time */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Date & Time' : 'التاريخ والوقت'}
+                التاريخ والوقت
               </label>
-              <DateTimeInput
+              <input
+                type="datetime-local"
                 value={formData.visitDate ? formData.visitDate.slice(0, 16) : ''}
-                onChange={(v) => setFormData((prev) => ({ ...prev, visitDate: v }))}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.visitDate ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                onChange={(e) => setFormData((prev) => ({ ...prev, visitDate: e.target.value }))}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
+                  errors.visitDate ? 'border-red-500' : 'border-gray-300'
+                }`}
               />
               {errors.visitDate && (
                 <p className="mt-1 text-sm text-red-600">{errors.visitDate}</p>
@@ -222,26 +219,24 @@ export default function VisitForm() {
             {/* Linked Appointment */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Linked Appointment (optional)' : 'الموعد المرتبط (اختياري)'}
+                الموعد المرتبط (اختياري)
               </label>
               <input
                 type="text"
-                value={prefillAppointmentId ? (isEn ? 'Linked appointment' : 'موعد مرتبط') : ''}
+                value={prefillAppointmentId ? 'موعد مرتبط' : ''}
                 disabled={!!prefillAppointmentId}
-                placeholder={isEn ? 'Appointment ID (optional)' : 'معرف الموعد (اختياري)'}
+                placeholder="معرف الموعد (اختياري)"
                 className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 focus:outline-none"
               />
               {prefillAppointmentId && (
-                <p className="mt-1 text-sm text-gray-500">
-                  {isEn ? 'Appointment linked automatically' : 'تم ربط الموعد تلقائيًا'}
-                </p>
+                <p className="mt-1 text-sm text-gray-500">تم ربط الموعد تلقائيًا</p>
               )}
             </div>
 
             {/* Diagnosis */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Diagnosis' : 'التشخيص'}
+                التشخيص
               </label>
               <input
                 type="text"
@@ -249,23 +244,24 @@ export default function VisitForm() {
                 onChange={(e) => setFormData((prev) => ({ ...prev, diagnosis: e.target.value }))}
                 maxLength={500}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844]"
-                placeholder={isEn ? 'Diagnosis (appears on visit invoice)' : 'التشخيص (يظهر في فاتورة الزيارة)'}
+                placeholder="التشخيص (يظهر في فاتورة الزيارة)"
               />
             </div>
 
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {isEn ? 'Notes' : 'ملاحظات'}
+                ملاحظات
               </label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
                 maxLength={1000}
                 rows={3}
-                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.notes ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                placeholder={isEn ? 'Add optional administrative notes...' : 'أضف ملاحظات إدارية اختيارية...'}
+                className={`w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${
+                  errors.notes ? 'border-red-500' : 'border-gray-300'
+                }`}
+                placeholder="أضف ملاحظات إدارية اختيارية..."
               />
               {errors.notes && (
                 <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
@@ -273,20 +269,20 @@ export default function VisitForm() {
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex justify-end gap-4">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                className="w-full rounded-md bg-gray-200 px-6 py-2 text-gray-700 transition-colors hover:bg-gray-300 sm:w-auto"
               >
-                {isEn ? 'Cancel' : 'إلغاء'}
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-md bg-[#111844] px-6 py-2 text-white transition-colors hover:bg-[#1a237e] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                {createMutation.isPending ? (isEn ? 'Saving...' : 'جاري الحفظ...') : (isEn ? 'Save Visit' : 'حفظ الزيارة')}
+                {createMutation.isPending ? 'جاري الحفظ...' : 'حفظ الزيارة'}
               </button>
             </div>
           </form>

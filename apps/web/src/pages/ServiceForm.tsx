@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { servicesService, CreateServiceDto, UpdateServiceDto } from '../services/services.service';
 import { useTranslation } from 'react-i18next';
+import { moneyToCents, normalizeMoneyInput } from '../utils/money';
+import { getReturnTo } from '../utils/listState';
+import { useToast } from '../contexts/ToastContext';
+import PageHeader from '../components/PageHeader';
+import Skeleton from '../components/Skeleton';
 
 export default function ServiceForm() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getReturnTo(searchParams.toString(), '/services');
+  const { showToast } = useToast();
   const isEdit = !!id;
 
   const [formData, setFormData] = useState<CreateServiceDto | UpdateServiceDto>({
@@ -43,9 +51,11 @@ export default function ServiceForm() {
   const createMutation = useMutation({
     mutationFn: (data: CreateServiceDto) => servicesService.createService(data),
     onSuccess: () => {
-      navigate('/services');
+      showToast({ type: 'success', message: t('feedback.serviceCreated') });
+      navigate(returnTo);
     },
     onError: (error: Error) => {
+      showToast({ type: 'error', message: error.message || t('services.createError') });
       setErrors({ general: error.message || t('services.createError') });
     },
   });
@@ -54,9 +64,11 @@ export default function ServiceForm() {
     mutationFn: (data: { id: string; dto: UpdateServiceDto }) =>
       servicesService.updateService(data.id, data.dto),
     onSuccess: () => {
-      navigate('/services');
+      showToast({ type: 'success', message: t('feedback.serviceUpdated') });
+      navigate(returnTo);
     },
     onError: (error: Error) => {
+      showToast({ type: 'error', message: error.message || t('services.updateError') });
       setErrors({ general: error.message || t('services.updateError') });
     },
   });
@@ -101,8 +113,13 @@ export default function ServiceForm() {
   };
 
   const handlePriceChange = (value: string) => {
-    const price = parseFloat(value);
-    setFormData((prev) => ({ ...prev, currentPrice: isNaN(price) ? 0 : price }));
+    const cents = moneyToCents(normalizeMoneyInput(value));
+    if (value !== '' && cents === null) {
+      setErrors((previous) => ({ ...previous, currentPrice: t('invoices.invalidMoneyPrecision') }));
+      return;
+    }
+    const price = cents === null ? 0 : cents / 100;
+    setFormData((prev) => ({ ...prev, currentPrice: price }));
 
     // Show warning if editing and price is being changed
     if (isEdit && serviceData && price !== parseFloat(serviceData.currentPrice)) {
@@ -111,17 +128,14 @@ export default function ServiceForm() {
   };
 
   const handleCancel = () => {
-    navigate('/services');
+    navigate(returnTo);
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#F6F7FA]">
-        <div className="container mx-auto px-4 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
-          </div>
+        <div className="container mx-auto px-4 py-5 sm:py-8">
+          <div className="ui-card p-6 space-y-3"><Skeleton className="h-8 rounded-lg" /><Skeleton className="h-64 rounded-lg" /></div>
         </div>
       </div>
     );
@@ -130,21 +144,14 @@ export default function ServiceForm() {
   return (
     <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">
-            {isEdit ? t('services.editService') : t('services.newService')}
-          </h1>
-          <button
-            onClick={handleCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
+        <PageHeader
+          title={isEdit ? t('services.editService') : t('services.newService')}
+          breadcrumbs={[{ label: t('sidebar.services'), href: returnTo }, { label: isEdit ? t('services.editService') : t('services.newService') }]}
+          actions={<button onClick={handleCancel} className="btn-primary px-4 py-2">{t('common.cancel')}</button>}
+        />
 
         {/* Form */}
-        <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl">
+        <div className="w-full max-w-2xl rounded-lg bg-white p-4 shadow-md sm:p-6">
           {errors.general && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
               {errors.general}
@@ -211,14 +218,15 @@ export default function ServiceForm() {
               </label>
               <div className="flex items-center gap-2">
                 <input
-                  type="number"
-                  step="0.001"
+                  type="text"
+                  inputMode="decimal"
+                  step="0.01"
                   min="0"
                   value={formData.currentPrice}
                   onChange={(e) => handlePriceChange(e.target.value)}
                   className={`flex-1 px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[#111844] ${errors.currentPrice ? 'border-red-500' : 'border-gray-300'
                     }`}
-                  placeholder="0.000"
+                  placeholder="0.00"
                 />
                 <span className="text-gray-500 shrink-0">{t('common.currency')}</span>
               </div>
@@ -249,18 +257,18 @@ export default function ServiceForm() {
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex justify-end gap-4">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                className="w-full rounded-md bg-gray-200 px-6 py-2 text-gray-700 transition-colors hover:bg-gray-300 sm:w-auto"
               >
                 {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-md bg-[#111844] px-6 py-2 text-white transition-colors hover:bg-[#1a237e] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {createMutation.isPending || updateMutation.isPending
                   ? t('common.saving')
@@ -275,4 +283,3 @@ export default function ServiceForm() {
     </div>
   );
 }
-

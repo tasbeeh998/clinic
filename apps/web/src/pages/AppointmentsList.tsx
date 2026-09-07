@@ -1,18 +1,29 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { appointmentsService, Appointment } from '../services/appointments.service';
 import { useTranslation } from 'react-i18next';
 import { formatTime as formatTimeUtil } from '../utils/dateFormat';
+import { preserveListState } from '../utils/listState';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
+import MobileRecordCard, { MobileRecordField } from '../components/MobileRecordCard';
 
 type ViewType = 'calendar' | 'list';
 
 export default function AppointmentsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [viewType, setViewType] = useState<ViewType>('calendar');
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [viewType, setViewType] = useState<ViewType>((searchParams.get('view') as ViewType) || 'calendar');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const value = searchParams.get('date');
+    const date = value ? new Date(`${value}T00:00:00`) : new Date();
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  });
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || '');
 
   const formatDate = (date: Date) => {
     return date.toISOString().split('T')[0];
@@ -41,17 +52,18 @@ export default function AppointmentsList() {
   };
 
   const handleNewAppointment = () => {
-    navigate('/appointments/new');
+    navigate(preserveListState('/appointments/new', location));
   };
 
   const handleDateChange = (days: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + days);
     setSelectedDate(newDate);
+    setSearchParams((current) => { current.set('date', formatDate(newDate)); return current; });
   };
 
   const handleAppointmentClick = (appointment: Appointment) => {
-    navigate(`/appointments/${appointment.id}`);
+    navigate(preserveListState(`/appointments/${appointment.id}`, location));
   };
 
   const formatTime = (dateString: string) => formatTimeUtil(dateString, i18n.language);
@@ -65,14 +77,10 @@ export default function AppointmentsList() {
     return (
       <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="h-12 bg-gray-200 rounded mb-4"></div>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-200 rounded"></div>
-              ))}
-            </div>
+          <PageHeader title={t('sidebar.appointments')} breadcrumbs={[{ label: t('sidebar.appointments') }]} />
+          <div className="ui-card p-6 space-y-3">
+            <Skeleton className="h-12 rounded-lg" />
+            <Skeleton className="h-12 rounded-lg" count={5} />
           </div>
         </div>
       </div>
@@ -83,9 +91,7 @@ export default function AppointmentsList() {
     return (
       <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {t('appointments.loadError')}
-          </div>
+          <div className="ui-card p-6 text-center text-[#C4362B] text-sm" role="alert">{t('appointments.loadError')}</div>
         </div>
       </div>
     );
@@ -103,29 +109,28 @@ export default function AppointmentsList() {
   return (
     <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">{t('sidebar.appointments')}</h1>
-          <button
-            onClick={handleNewAppointment}
-            className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors"
-          >
-            + {t('appointments.newAppointment')}
-          </button>
-        </div>
+        <PageHeader
+          title={t('sidebar.appointments')}
+          breadcrumbs={[{ label: t('sidebar.appointments') }]}
+          actions={
+            <button onClick={handleNewAppointment} className="btn-primary px-4 py-2.5">
+              + {t('appointments.newAppointment')}
+            </button>
+          }
+        />
 
         {/* Controls */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             {/* Date Navigation */}
-            <div className="flex items-center gap-4">
+            <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:gap-4">
               <button
                 onClick={() => handleDateChange(-1)}
                 className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
               >
                 {t('common.previous')}
               </button>
-              <span className="font-medium text-gray-900 min-w-[200px] text-center">
+              <span className="min-w-0 flex-1 text-center font-medium text-gray-900 sm:min-w-[200px]">
                 {formatDateDisplay(selectedDate)}
               </span>
               <button
@@ -137,10 +142,10 @@ export default function AppointmentsList() {
             </div>
 
             {/* View Toggle */}
-            <div className="flex gap-2">
+            <div className="flex w-full gap-2 sm:w-auto">
               <button
-                onClick={() => setViewType('calendar')}
-                className={`px-3 py-1 rounded ${
+                onClick={() => { setViewType('calendar'); setSearchParams((current) => { current.set('view', 'calendar'); return current; }); }}
+                className={`flex-1 rounded px-3 py-2 text-sm sm:flex-none sm:py-1 ${
                   viewType === 'calendar'
                     ? 'bg-[#111844] text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -149,8 +154,8 @@ export default function AppointmentsList() {
                 {t('appointments.calendarView')}
               </button>
               <button
-                onClick={() => setViewType('list')}
-                className={`px-3 py-1 rounded ${
+                onClick={() => { setViewType('list'); setSearchParams((current) => { current.set('view', 'list'); return current; }); }}
+                className={`flex-1 rounded px-3 py-2 text-sm sm:flex-none sm:py-1 ${
                   viewType === 'list'
                     ? 'bg-[#111844] text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -163,8 +168,8 @@ export default function AppointmentsList() {
             {/* Status Filter */}
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded"
+              onChange={(e) => { setStatusFilter(e.target.value); setSearchParams((current) => { if (e.target.value) current.set('status', e.target.value); else current.delete('status'); return current; }); }}
+              className="w-full rounded border border-gray-300 px-3 py-2 sm:w-auto sm:py-1"
             >
               <option value="">{t('common.allStatuses')}</option>
               <option value="BOOKED">{t('appointments.statusBooked')}</option>
@@ -198,7 +203,7 @@ export default function AppointmentsList() {
                           <div
                             key={apt.id}
                             onClick={() => handleAppointmentClick(apt)}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded cursor-pointer hover:bg-gray-100 mb-2"
+                            className="mb-2 flex cursor-pointer items-center justify-between rounded bg-gray-50 p-3 hover:bg-gray-100"
                           >
                             <div>
                               <div className="font-medium text-gray-900">{apt.patient.fullNameAr}</div>
@@ -222,10 +227,26 @@ export default function AppointmentsList() {
         {viewType === 'list' && (
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             {appointments.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                {t('appointments.noAppointmentsToday')}
-              </div>
+              <EmptyState title={t('appointments.noAppointmentsToday')} description={t('common.emptyDescription')} />
             ) : (
+              <>
+              <div className="mobile-record-list p-3 md:hidden">
+                {appointments
+                  .slice()
+                  .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+                  .map((apt) => (
+                    <MobileRecordCard
+                      key={apt.id}
+                      title={apt.patient.fullNameAr}
+                      subtitle={formatTime(apt.scheduledAt)}
+                      onClick={() => handleAppointmentClick(apt)}
+                    >
+                      <MobileRecordField label={t('patients.civilId')} value={apt.patient.civilId} />
+                      <MobileRecordField label={t('common.status')} value={getStatusBadge(apt.status)} />
+                    </MobileRecordCard>
+                  ))}
+              </div>
+              <div className="hidden md:block">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
@@ -251,7 +272,9 @@ export default function AppointmentsList() {
                       </tr>
                     ))}
                 </tbody>
-              </table>
+            </table>
+            </div>
+            </>
             )}
           </div>
         )}

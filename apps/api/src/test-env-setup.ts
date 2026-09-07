@@ -13,3 +13,12 @@ if (!process.env.DATABASE_URL) {
 if (!process.env.DATABASE_URL.includes('clinic_test_db')) {
   throw new Error('DATABASE_URL does not point to clinic_test_db. Test safety violation!');
 }
+
+// Verify JWT secrets are set for tests
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set in test environment');
+}
+
+if (!process.env.JWT_REFRESH_SECRET) {
+  throw new Error('JWT_REFRESH_SECRET is not set in test environment');
+}

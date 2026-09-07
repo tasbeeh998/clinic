@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+<<<<<<< HEAD
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Menu, Bell, UserRound, LogOut, ChevronDown, Languages, CalendarClock, DatabaseBackup, CheckCheck, ArrowRight, ArrowLeft } from 'lucide-react';
+=======
+import { Menu, UserRound, LogOut, ChevronDown, Languages } from 'lucide-react';
+>>>>>>> origin/team/clinic-ux-latest
 import { useAuth } from '../contexts/AuthContext';
 import { setLanguage } from '../i18n/config';
-import { notificationsService } from '../services/notifications.service';
-import { formatDateTime } from '../utils/dateFormat';
 
 interface HeaderProps {
   onOpenSidebar: () => void;
@@ -16,8 +18,8 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
   const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+<<<<<<< HEAD
   const notifRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -25,6 +27,8 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
 
   const showBackButton = location.pathname !== '/dashboard';
   const BackIcon = i18n.language === 'ar' ? ArrowRight : ArrowLeft;
+=======
+>>>>>>> origin/team/clinic-ux-latest
 
   const toggleLanguage = () => {
     setLanguage(i18n.language === 'ar' ? 'en' : 'ar');
@@ -35,43 +39,12 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const roleLabel = user?.role === 'ADMIN' ? t('roles.admin') : t('roles.receptionist');
-
-  // Polls every 60s — good enough for reminders that only change every 15
-  // minutes on the backend side, without needing a websocket.
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['notifications-unread-count'],
-    queryFn: () => notificationsService.getUnreadCount(),
-    refetchInterval: 60000,
-  });
-
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => notificationsService.getAll(),
-    enabled: notifOpen,
-  });
-
-  const handleMarkAllRead = async () => {
-    await notificationsService.markAllRead();
-    queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-  };
-
-  const handleNotificationClick = async (id: string, isRead: boolean) => {
-    if (!isRead) {
-      await notificationsService.markRead(id);
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-    }
-  };
 
   return (
     <header className="h-[72px] bg-white border-b border-[#E2E8F0] flex items-center justify-between px-5 md:px-8 shrink-0">
@@ -196,4 +169,5 @@ export default function Header({ onOpenSidebar }: HeaderProps) {
     </header>
   );
 }
+
 

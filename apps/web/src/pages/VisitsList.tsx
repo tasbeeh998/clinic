@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Eye, ReceiptText, CheckCircle2, Plus } from 'lucide-react';
 import { visitsService, VisitStatus } from '../services/visits.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate, formatTime } from '../utils/dateFormat';
 import DateInput from '../components/DateInput';
+import { preserveListState } from '../utils/listState';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
+import MobileRecordCard, { MobileRecordField } from '../components/MobileRecordCard';
 
 function statusBadgeStyle(status: VisitStatus) {
   switch (status) {
@@ -23,11 +28,13 @@ function statusBadgeStyle(status: VisitStatus) {
 export default function VisitsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<VisitStatus | ''>('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [page, setPage] = useState(1);
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState<VisitStatus | ''>((searchParams.get('status') as VisitStatus) || '');
+  const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '');
+  const [dateFilter, setDateFilter] = useState(searchParams.get('date') || '');
+  const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
   const limit = 20;
 
   const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -78,16 +85,17 @@ export default function VisitsList() {
 
   return (
     <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.visits')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{t('visits.subtitle')}</p>
-        </div>
-        <button onClick={() => navigate('/visits/new')} className="btn-primary flex items-center gap-2 px-4">
-          <Plus size={18} strokeWidth={2} />
-          {t('visits.registerNew')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('sidebar.visits')}
+        subtitle={t('visits.subtitle')}
+        breadcrumbs={[{ label: t('sidebar.visits') }]}
+        actions={
+          <button onClick={() => navigate('/visits/new')} className="btn-primary flex items-center gap-2 px-4 py-2.5">
+            <Plus size={18} strokeWidth={2} />
+            {t('visits.registerNew')}
+          </button>
+        }
+      />
 
       {counts && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
@@ -106,24 +114,24 @@ export default function VisitsList() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
+      <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative w-full flex-1 sm:min-w-[240px] sm:max-w-md">
           <Search size={17} strokeWidth={1.75} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
           <input
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); setSearchParams((current) => { current.set('search', e.target.value); current.set('page', '1'); return current; }); }}
             placeholder={t('visits.searchPlaceholder')}
             className="ui-input pr-10"
           />
         </div>
         <DateInput
           value={dateFilter}
-          onChange={(v) => { setDateFilter(v); setPage(1); }}
-          className="ui-input w-auto"
+          onChange={(v) => { setDateFilter(v); setPage(1); setSearchParams((current) => { if (v) current.set('date', v); else current.delete('date'); current.set('page', '1'); return current; }); }}
+          className="ui-input w-full sm:w-auto"
           isClearable
         />
-        <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="ui-input w-auto">
+        <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); setSearchParams((current) => { if (e.target.value) current.set('type', e.target.value); else current.delete('type'); current.set('page', '1'); return current; }); }} className="ui-input w-full sm:w-auto">
           <option value="">{t('visits.allTypes')}</option>
           <option value="CHECKUP">{t('visits.typeCheckup')}</option>
           <option value="FOLLOW_UP">{t('visits.typeFollowUp')}</option>
@@ -131,8 +139,8 @@ export default function VisitsList() {
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as VisitStatus | ''); setPage(1); }}
-          className="ui-input w-auto"
+          onChange={(e) => { setStatusFilter(e.target.value as VisitStatus | ''); setPage(1); setSearchParams((current) => { if (e.target.value) current.set('status', e.target.value); else current.delete('status'); current.set('page', '1'); return current; }); }}
+          className="ui-input w-full sm:w-auto"
         >
           <option value="">{t('common.allStatuses')}</option>
           {(Object.keys(STATUS_LABELS) as VisitStatus[]).map((s) => (
@@ -143,20 +151,44 @@ export default function VisitsList() {
 
       {isLoading && (
         <div className="ui-card p-6 space-y-3">
-          {[...Array(6)].map((_, i) => <div key={i} className="ui-skeleton h-11 rounded-lg" />)}
+          <Skeleton className="h-11 rounded-lg" count={6} />
         </div>
       )}
 
       {error && <div className="ui-card p-6 text-center text-[#C4362B] text-sm">{t('visits.loadError')}</div>}
 
       {!isLoading && !error && visits.length === 0 && (
-        <div className="ui-card p-16 text-center">
-          <p className="text-[#64748B]">{t('common.noDataAvailable')}</p>
+        <div className="ui-card">
+          <EmptyState title={t('common.noDataAvailable')} description={t('common.emptyDescription')} />
         </div>
       )}
 
       {!isLoading && !error && visits.length > 0 && (
         <div className="ui-card overflow-hidden p-0">
+          <div className="mobile-record-list p-3 md:hidden">
+            {visits.map((visit) => {
+              const invoice = visit.invoices?.[0];
+              return (
+                <MobileRecordCard
+                  key={visit.id}
+                  title={visit.patient.fullNameAr}
+                  subtitle={`${formatDate(visit.visitDate, i18n.language)} · ${formatTime(visit.visitDate, i18n.language)}`}
+                  actions={<span className="ui-badge" style={statusBadgeStyle(visit.status)}>{STATUS_LABELS[visit.status]}</span>}
+                  onClick={() => navigate(preserveListState(`/visits/${visit.id}`, location))}
+                >
+                  <MobileRecordField label={t('patients.civilId')} value={visit.patient.civilId} />
+                  <MobileRecordField label={t('visits.type')} value={TYPE_LABELS[visit.type]} />
+                  <MobileRecordField label={t('visits.services')} value={invoice?.invoiceItems.length ? invoice.invoiceItems.map((i) => i.serviceNameSnapshot).join(i18n.language === 'ar' ? '، ' : ', ') : '—'} />
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <button onClick={(event) => { event.stopPropagation(); navigate(preserveListState(`/visits/${visit.id}`, location)); }} aria-label={t('visits.viewDetails')} className="icon-btn"><Eye size={16} strokeWidth={1.75} /></button>
+                    {invoice && <button onClick={(event) => { event.stopPropagation(); navigate(preserveListState(`/invoices/${invoice.id}`, location)); }} aria-label={t('visits.viewInvoice')} className="icon-btn"><ReceiptText size={16} strokeWidth={1.75} /></button>}
+                    {(visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS') && <button onClick={(event) => { event.stopPropagation(); handleComplete(visit.id); }} aria-label={t('visits.completeVisit')} className="icon-btn"><CheckCircle2 size={16} strokeWidth={1.75} /></button>}
+                  </div>
+                </MobileRecordCard>
+              );
+            })}
+          </div>
+          <div className="hidden md:block">
           <table className="ui-table">
             <thead>
               <tr>
@@ -197,11 +229,11 @@ export default function VisitsList() {
                   </td>
                   <td>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => navigate(`/visits/${visit.id}`)} aria-label={t('visits.viewDetails')} className="icon-btn">
+                      <button onClick={() => navigate(preserveListState(`/visits/${visit.id}`, location))} aria-label={t('visits.viewDetails')} className="icon-btn">
                         <Eye size={16} strokeWidth={1.75} />
                       </button>
                       {invoice && (
-                        <button onClick={() => navigate(`/invoices/${invoice.id}`)} aria-label={t('visits.viewInvoice')} className="icon-btn">
+                        <button onClick={() => navigate(preserveListState(`/invoices/${invoice.id}`, location))} aria-label={t('visits.viewInvoice')} className="icon-btn">
                           <ReceiptText size={16} strokeWidth={1.75} />
                         </button>
                       )}
@@ -217,6 +249,7 @@ export default function VisitsList() {
               })}
             </tbody>
           </table>
+          </div>
 
           {meta && (
             <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
@@ -230,11 +263,11 @@ export default function VisitsList() {
               </span>
               {meta.totalPages > 1 && (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
+                  <button onClick={() => setPage((p) => { const next = Math.max(1, p - 1); setSearchParams((current) => { current.set('page', String(next)); return current; }); return next; })} disabled={page === 1} className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
                     {t('common.previous')}
                   </button>
                   <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
-                  <button onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))} disabled={page === meta.totalPages} className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
+                  <button onClick={() => setPage((p) => { const next = Math.min(meta.totalPages, p + 1); setSearchParams((current) => { current.set('page', String(next)); return current; }); return next; })} disabled={page === meta.totalPages} className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40">
                     {t('common.next')}
                   </button>
                 </div>

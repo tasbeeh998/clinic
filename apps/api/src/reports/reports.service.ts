@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { Decimal } from '@prisma/client/runtime/library';
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -12,13 +13,23 @@ function endOfDay(d: Date): Date {
   return x;
 }
 
+// Helper to parse date string to UTC to avoid timezone issues
+function parseDate(dateStr: string): Date {
+  // If it's already a date string like "2025-09-06", parse it as UTC
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+  }
+  return new Date(dateStr);
+}
+
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
   private resolveRange(from?: string, to?: string) {
-    const toDate = to ? endOfDay(new Date(to)) : endOfDay(new Date());
-    const fromDate = from ? startOfDay(new Date(from)) : startOfDay(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+    const toDate = to ? endOfDay(parseDate(to)) : endOfDay(new Date());
+    const fromDate = from ? startOfDay(parseDate(from)) : startOfDay(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
     return { fromDate, toDate };
   }
 
@@ -41,7 +52,7 @@ export class ReportsService {
         _sum: { total: true },
       }),
       this.prisma.payment.aggregate({
-        where: { paymentDate: { gte: fromDate, lte: toDate } },
+        where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
         _sum: { amount: true },
       }),
       this.prisma.invoice.aggregate({
@@ -88,7 +99,7 @@ export class ReportsService {
     const collectedRows = await this.prisma.$queryRaw<Array<{ day: Date; collected: string }>>`
       SELECT date_trunc('day', "paymentDate") AS day, SUM("amount") AS collected
       FROM "Payment"
-      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate}
+      WHERE "paymentDate" BETWEEN ${fromDate} AND ${toDate} AND "status" = 'RECORDED'
       GROUP BY day ORDER BY day ASC
     `;
 
@@ -111,7 +122,7 @@ export class ReportsService {
     const { fromDate, toDate } = this.resolveRange(from, to);
     const rows = await this.prisma.payment.groupBy({
       by: ['method'],
-      where: { paymentDate: { gte: fromDate, lte: toDate } },
+      where: { paymentDate: { gte: fromDate, lte: toDate }, status: 'RECORDED' },
       _sum: { amount: true },
       _count: { _all: true },
     });
@@ -267,9 +278,18 @@ export class ReportsService {
       }),
     ]);
 
-    const totalInvoiced = invoicesToday.reduce((sum, inv) => sum + Number(inv.total), 0);
-    const totalCollected = paymentsToday.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalRemaining = invoicesToday.reduce((sum, inv) => sum + Number(inv.remaining), 0);
+    const totalInvoiced = invoicesToday
+      .reduce((sum, inv) => sum.add(inv.total), new Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
+    const totalCollected = paymentsToday
+      .reduce((sum, p) => sum.add(p.amount), new Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
+    const totalRemaining = invoicesToday
+      .reduce((sum, inv) => sum.add(inv.remaining), new Decimal(0))
+      .toDecimalPlaces(2)
+      .toNumber();
 
     const paymentStatusCounts: Record<string, number> = { UNPAID: 0, PARTIALLY_PAID: 0, PAID: 0 };
     for (const row of invoicePaymentStatusBreakdown) {

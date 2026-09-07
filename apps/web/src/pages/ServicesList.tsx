@@ -6,6 +6,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { servicesService, Service } from '../services/services.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '../utils/dateFormat';
+import { formatMoney } from '../utils/money';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { useToast } from '../contexts/ToastContext';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
+import MobileRecordCard, { MobileRecordField } from '../components/MobileRecordCard';
 
 export default function ServicesList() {
   const { t, i18n } = useTranslation();
@@ -19,6 +26,7 @@ export default function ServicesList() {
 
   const isAdmin = user?.role === 'ADMIN';
 
+  const { showToast } = useToast();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['services', search, isActiveFilter, page],
     queryFn: () => servicesService.getServices(search, isActiveFilter, page, limit),
@@ -32,25 +40,26 @@ export default function ServicesList() {
       await servicesService.updateServiceStatus(service.id, { isActive: !service.isActive });
       setConfirmDeactivate(null);
       refetch();
+      showToast({ type: 'success', message: service.isActive ? t('feedback.serviceDeactivated') : t('feedback.serviceActivated') });
     } catch (err) {
       console.error('Failed to update service status:', err);
+      showToast({ type: 'error', message: err instanceof Error ? err.message : t('feedback.serviceStatusFailed') });
     }
   };
 
   return (
     <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.services')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{t('services.subtitle')}</p>
-        </div>
-        {isAdmin && (
-          <button onClick={() => navigate('/services/new')} className="btn-primary flex items-center gap-2 px-4">
+      <PageHeader
+        title={t('sidebar.services')}
+        subtitle={t('services.subtitle')}
+        breadcrumbs={[{ label: t('sidebar.services') }]}
+        actions={isAdmin && (
+          <button onClick={() => navigate('/services/new')} className="btn-primary flex items-center gap-2 px-4 py-2.5">
             <Plus size={18} strokeWidth={2} />
             {t('services.addNew')}
           </button>
         )}
-      </div>
+      />
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="relative flex-1 min-w-[240px] max-w-md">
@@ -70,7 +79,7 @@ export default function ServicesList() {
             setIsActiveFilter(value === '' ? undefined : value === 'true');
             setPage(1);
           }}
-          className="ui-input w-auto"
+          className="ui-input w-full sm:w-auto"
         >
           <option value="">{t('common.allStatuses')}</option>
           <option value="true">{t('services.statusActive')}</option>
@@ -80,9 +89,7 @@ export default function ServicesList() {
 
       {isLoading && (
         <div className="ui-card p-6 space-y-3">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="ui-skeleton h-11 rounded-lg" />
-          ))}
+          <Skeleton className="h-11 rounded-lg" count={6} />
         </div>
       )}
 
@@ -91,13 +98,34 @@ export default function ServicesList() {
       )}
 
       {!isLoading && !error && services.length === 0 && (
-        <div className="ui-card p-16 text-center">
-          <p className="text-[#64748B]">{search ? t('common.noSearchResults') : t('common.noDataAvailable')}</p>
+        <div className="ui-card">
+          <EmptyState title={search ? t('common.noSearchResults') : t('common.noDataAvailable')} description={t('common.emptyDescription')} />
         </div>
       )}
 
       {!isLoading && !error && services.length > 0 && (
         <div className="ui-card overflow-hidden p-0">
+          <div className="mobile-record-list p-3 md:hidden">
+            {services.map((service) => (
+              <MobileRecordCard
+                key={service.id}
+                title={service.name}
+                subtitle={service.description}
+                actions={<span className="ui-badge" style={service.isActive ? { background: 'rgba(22,128,60,0.1)', color: 'var(--success)' } : { background: 'rgba(100,116,139,0.1)', color: 'var(--text-secondary)' }}>{service.isActive ? t('services.statusActive') : t('services.statusInactive')}</span>}
+              >
+                <MobileRecordField label={t('services.code')} value={service.code || '—'} />
+                <MobileRecordField label={t('services.price')} value={`${formatMoney(service.currentPrice, i18n.language)} ${t('common.currency')}`} />
+                <MobileRecordField label={t('services.updatedAt')} value={formatDate(service.updatedAt, i18n.language)} />
+                {isAdmin && (
+                  <div className="flex gap-1 pt-1">
+                    <button onClick={() => navigate(`/services/${service.id}/edit`)} aria-label={t('services.editService')} className="icon-btn"><Pencil size={16} strokeWidth={1.75} /></button>
+                    <button onClick={() => setConfirmDeactivate(service)} aria-label={service.isActive ? t('services.deactivateService') : t('services.activateService')} className="icon-btn danger"><Trash2 size={16} strokeWidth={1.75} /></button>
+                  </div>
+                )}
+              </MobileRecordCard>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <table className="ui-table">
             <thead>
               <tr>
@@ -106,7 +134,7 @@ export default function ServicesList() {
                 <th>{t('services.price')} ({t('common.currency')})</th>
                 <th>{t('common.status')}</th>
                 <th>{t('services.updatedAt')}</th>
-                {isAdmin && <th>الإجراءات</th>}
+                {isAdmin && <th>{t('common.actions')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -117,7 +145,7 @@ export default function ServicesList() {
                     {service.description && <div className="text-xs text-[#94A3B8]">{service.description}</div>}
                   </td>
                   <td className="font-mono text-[#64748B]">{service.code || '—'}</td>
-                  <td className="font-medium text-[#1F2430]">{parseFloat(service.currentPrice).toFixed(2)}</td>
+                  <td className="font-medium text-[#1F2430]">{formatMoney(service.currentPrice, i18n.language)}</td>
                   <td>
                     <span
                       className="ui-badge"
@@ -155,6 +183,7 @@ export default function ServicesList() {
               ))}
             </tbody>
           </table>
+          </div>
 
           {meta && (
             <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
@@ -190,34 +219,20 @@ export default function ServicesList() {
         </div>
       )}
 
-      {confirmDeactivate && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 px-4">
-          <div className="ui-card p-6 max-w-sm w-full">
-            <h3 className="font-bold text-[#102F63] mb-2">
-              {confirmDeactivate.isActive ? t('services.deactivateService') : t('services.activateService')}
-            </h3>
-            <p className="text-sm text-[#64748B] mb-5">
-              {confirmDeactivate.isActive
-                ? t('services.deactivateConfirm', { name: confirmDeactivate.name })
-                : t('services.activateConfirm', { name: confirmDeactivate.name })}
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmDeactivate(null)}
-                className="px-4 py-2 rounded-[10px] border border-[#E2E8F0] text-sm text-[#64748B]"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={() => handleToggleStatus(confirmDeactivate)}
-                className={confirmDeactivate.isActive ? 'btn-danger-outline px-4 py-2 text-sm' : 'btn-primary px-4 py-2 text-sm'}
-              >
-                {confirmDeactivate.isActive ? t('common.deactivate') : t('common.activate')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDeactivate}
+        title={confirmDeactivate?.isActive ? t('services.deactivateService') : t('services.activateService')}
+        message={confirmDeactivate
+          ? (confirmDeactivate.isActive
+            ? t('services.deactivateConfirm', { name: confirmDeactivate.name })
+            : t('services.activateConfirm', { name: confirmDeactivate.name }))
+          : ''}
+        confirmLabel={confirmDeactivate?.isActive ? t('common.deactivate') : t('common.activate')}
+        cancelLabel={t('common.cancel')}
+        destructive={!!confirmDeactivate?.isActive}
+        onCancel={() => setConfirmDeactivate(null)}
+        onConfirm={() => confirmDeactivate && handleToggleStatus(confirmDeactivate)}
+      />
     </div>
   );
 }

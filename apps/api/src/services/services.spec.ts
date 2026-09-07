@@ -5,6 +5,7 @@ import { AppModule } from '../app.module';
 import { PrismaService } from '../database/prisma.service';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
+import { cleanupTestData } from '../test-utils';
 
 describe('Services Module Tests (E2E)', () => {
   let app: INestApplication;
@@ -28,23 +29,8 @@ describe('Services Module Tests (E2E)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    // Clean up test data - delete in correct order to respect foreign key constraints
-    const testUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const testUserIds = testUsers.map(u => u.id);
-    
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: testUserIds } },
-      });
-    }
-    
-    await prisma.service.deleteMany();
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
+    // Clean up test data using shared utility (scoped to services test users)
+    await cleanupTestData(prisma, '.services@test.com');
 
     // Create admin user
     const adminPasswordHash = await argon2.hash('admin123');
@@ -91,24 +77,8 @@ describe('Services Module Tests (E2E)', () => {
   });
 
   afterAll(async () => {
-    // Clean up test data - delete in correct order to respect foreign key constraints
-    const testUsers = await prisma.user.findMany({
-      where: { email: { contains: '@test.com' } },
-      select: { id: true },
-    });
-    const testUserIds = testUsers.map(u => u.id);
-    
-    if (testUserIds.length > 0) {
-      await prisma.auditLog.deleteMany({
-        where: { userId: { in: testUserIds } },
-      });
-    }
-    
-    await prisma.service.deleteMany();
-    await prisma.user.deleteMany({
-      where: { email: { contains: '@test.com' } },
-    });
-
+    // Clean up test data using shared utility (scoped to services test users)
+    await cleanupTestData(prisma, '.services@test.com');
     await app.close();
   });
 
@@ -214,6 +184,14 @@ describe('Services Module Tests (E2E)', () => {
         .expect(201);
 
       expect(parseFloat(response.body.currentPrice)).toBe(0);
+    });
+
+    it('should reject prices with more than two decimal places', async () => {
+      await request(app.getHttpServer())
+        .post('/api/services')
+        .set('Authorization', `Bearer ${adminAccessToken}`)
+        .send({ name: 'Three decimal service', currentPrice: 1.001 })
+        .expect(400);
     });
 
     it('should trim service name', async () => {

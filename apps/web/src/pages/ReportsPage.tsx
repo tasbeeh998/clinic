@@ -9,6 +9,11 @@ import { reportsService } from '../services/reports.service';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import DateInput from '../components/DateInput';
+import { formatMoney, moneyToCents } from '../utils/money';
+import { useToast } from '../contexts/ToastContext';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
 
 const COLORS = ['#102F63', '#173B78', '#4B5694', '#8991A6', '#C4362B', '#C98200'];
 
@@ -36,8 +41,9 @@ function KpiCard({ icon: Icon, label, value, suffix }: { icon: typeof TrendingUp
 }
 
 export default function ReportsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const PAYMENT_METHOD_LABELS: Record<string, string> = {
     CASH: t('payments.methodCash'), VISA: t('payments.methodVisa'), KNET: t('payments.methodKnet'), OTHER: t('payments.methodOther'),
@@ -71,8 +77,10 @@ export default function ReportsPage() {
     setExportingPdf(true);
     try {
       await reportsService.downloadExport('pdf', from, to);
+      showToast({ type: 'success', message: t('feedback.reportExported') });
     } catch (err) {
       console.error('Failed to export PDF report:', err);
+      showToast({ type: 'error', message: err instanceof Error ? err.message : t('reports.exportError') });
     } finally {
       setExportingPdf(false);
     }
@@ -82,8 +90,10 @@ export default function ReportsPage() {
     setExportingExcel(true);
     try {
       await reportsService.downloadExport('excel', from, to);
+      showToast({ type: 'success', message: t('feedback.reportExported') });
     } catch (err) {
       console.error('Failed to export Excel report:', err);
+      showToast({ type: 'error', message: err instanceof Error ? err.message : t('reports.exportError') });
     } finally {
       setExportingExcel(false);
     }
@@ -93,12 +103,11 @@ export default function ReportsPage() {
 
   return (
     <div className="page-container">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.reports')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{t('reports.subtitle')}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title={t('sidebar.reports')}
+        subtitle={t('reports.subtitle')}
+        breadcrumbs={[{ label: t('sidebar.reports') }]}
+        actions={
           <button
             onClick={() => navigate('/reports/daily-closing')}
             className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC]"
@@ -106,6 +115,9 @@ export default function ReportsPage() {
             <ClipboardCheck size={16} strokeWidth={1.75} />
             {t('dailyClosing.title')}
           </button>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2 mb-6">
           <DateInput value={from} onChange={setFrom} className="ui-input w-auto" />
           <span className="text-[#94A3B8] text-sm">{t('reports.to')}</span>
           <DateInput value={to} onChange={setTo} className="ui-input w-auto" />
@@ -125,14 +137,14 @@ export default function ReportsPage() {
             <FileSpreadsheet size={16} strokeWidth={1.75} />
             {exportingExcel ? t('reports.exporting') : t('reports.exportExcel')}
           </button>
-        </div>
       </div>
+      {summary.error && <div className="ui-card p-4 mb-5 text-sm text-[#C4362B]" role="alert">{t('reports.loadError')}</div>}
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-        <KpiCard icon={TrendingUp} label={t('reports.totalRevenue')} value={s ? s.totalRevenue.toFixed(0) : '—'} suffix={t('common.currency')} />
-        <KpiCard icon={Wallet} label={t('reports.totalCollected')} value={s ? s.totalCollected.toFixed(0) : '—'} suffix={t('common.currency')} />
-        <KpiCard icon={AlertCircle} label={t('reports.netProfit')} value={s ? (s.totalRevenue - s.outstandingAmount).toFixed(0) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={TrendingUp} label={t('reports.totalRevenue')} value={s ? formatMoney(s.totalRevenue, i18n.language) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={Wallet} label={t('reports.totalCollected')} value={s ? formatMoney(s.totalCollected, i18n.language) : '—'} suffix={t('common.currency')} />
+        <KpiCard icon={AlertCircle} label={t('reports.netProfit')} value={s ? formatMoney(((moneyToCents(s.totalRevenue) || 0) - (moneyToCents(s.outstandingAmount) || 0)) / 100, i18n.language) : '—'} suffix={t('common.currency')} />
         <KpiCard icon={UsersRound} label={t('reports.newPatientsCount')} value={s ? s.newPatients : '—'} />
         <KpiCard icon={CalendarDays} label={t('reports.totalAppointments')} value={s ? s.totalAppointments : '—'} />
         <KpiCard icon={ClipboardList} label={t('reports.totalVisits')} value={s ? s.totalVisits : '—'} />
@@ -144,7 +156,7 @@ export default function ReportsPage() {
         <div className="ui-card p-5 lg:col-span-2">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.revenueAndCollections')}</h2>
           {revenueTimeseries.isLoading ? (
-            <div className="ui-skeleton h-64 rounded-lg" />
+            <Skeleton className="h-64 rounded-lg" />
           ) : revenueTimeseries.data && revenueTimeseries.data.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={revenueTimeseries.data}>
@@ -158,7 +170,7 @@ export default function ReportsPage() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="ui-empty-state">{t('reports.noDataInPeriod')}</div>
+            <EmptyState title={t('reports.noDataInPeriod')} />
           )}
         </div>
 
@@ -166,7 +178,7 @@ export default function ReportsPage() {
         <div className="ui-card p-5">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.paymentMethods')}</h2>
           {paymentMethods.isLoading ? (
-            <div className="ui-skeleton h-64 rounded-lg" />
+            <Skeleton className="h-64 rounded-lg" />
           ) : paymentMethods.data && paymentMethods.data.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={200}>
@@ -174,7 +186,7 @@ export default function ReportsPage() {
                   <Pie data={paymentMethods.data} dataKey="amount" nameKey="method" innerRadius={45} outerRadius={75}>
                     {paymentMethods.data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => `${v.toFixed(2)} ${t('common.currency')}`} />
+                  <Tooltip formatter={(v: number) => `${formatMoney(v, i18n.language)} ${t('common.currency')}`} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-1.5 mt-2">
@@ -184,13 +196,13 @@ export default function ReportsPage() {
                       <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
                       {PAYMENT_METHOD_LABELS[row.method] || row.method}
                     </span>
-                    <span className="font-medium text-[#1F2430]">{row.amount.toFixed(2)} {t('common.currency')}</span>
+                    <span className="font-medium text-[#1F2430]">{formatMoney(row.amount, i18n.language)} {t('common.currency')}</span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <div className="ui-empty-state">{t('reports.noPaymentsInPeriod')}</div>
+            <EmptyState title={t('reports.noPaymentsInPeriod')} />
           )}
         </div>
       </div>
@@ -200,7 +212,7 @@ export default function ReportsPage() {
         <div className="ui-card p-5 lg:col-span-2 overflow-x-auto">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.topServicesByRevenue')}</h2>
           {serviceUsage.isLoading ? (
-            <div className="ui-skeleton h-40 rounded-lg" />
+            <Skeleton className="h-40 rounded-lg" />
           ) : serviceUsage.data && serviceUsage.data.length > 0 ? (
             <table className="w-full text-sm">
               <thead>
@@ -215,13 +227,13 @@ export default function ReportsPage() {
                   <tr key={row.serviceName} className="border-b border-[#E2E8F0] last:border-0">
                     <td className="py-2.5 text-[#1F2430]">{row.serviceName}</td>
                     <td className="py-2.5 text-center text-[#64748B]">{row.timesUsed}</td>
-                    <td className="py-2.5 text-left font-medium text-[#1F2430]">{row.revenue.toFixed(2)}</td>
+                    <td className="py-2.5 text-left font-medium text-[#1F2430]">{formatMoney(row.revenue, i18n.language)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
-            <div className="ui-empty-state">{t('reports.noDataInPeriod')}</div>
+            <EmptyState title={t('reports.noDataInPeriod')} />
           )}
         </div>
 
@@ -229,7 +241,7 @@ export default function ReportsPage() {
         <div className="ui-card p-5">
           <h2 className="text-[15px] font-bold text-[#102F63] mb-4">{t('reports.invoicesByStatus')}</h2>
           {invoiceStatus.isLoading ? (
-            <div className="ui-skeleton h-48 rounded-lg" />
+            <Skeleton className="h-48 rounded-lg" />
           ) : invoiceStatus.data && invoiceStatus.data.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={180}>
@@ -253,7 +265,7 @@ export default function ReportsPage() {
               </div>
             </>
           ) : (
-            <div className="ui-empty-state">{t('reports.noInvoicesInPeriod')}</div>
+            <EmptyState title={t('reports.noInvoicesInPeriod')} />
           )}
         </div>
       </div>
@@ -272,7 +284,7 @@ export default function ReportsPage() {
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">{t('reports.noVisitsInPeriod')}</div>
+            <EmptyState title={t('reports.noVisitsInPeriod')} />
           )}
         </div>
 
@@ -289,7 +301,7 @@ export default function ReportsPage() {
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">{t('reports.noAppointmentsInPeriod')}</div>
+            <EmptyState title={t('reports.noAppointmentsInPeriod')} />
           )}
         </div>
 
@@ -304,12 +316,12 @@ export default function ReportsPage() {
                     <div className="text-[#1F2430]">{row.patient.fullNameAr}</div>
                     <div className="text-xs text-[#94A3B8]">{row.invoiceNumber}</div>
                   </div>
-                  <span className="font-medium text-[#C4362B]">{parseFloat(row.remaining).toFixed(2)} {t('common.currency')}</span>
+                  <span className="font-medium text-[#C4362B]">{formatMoney(row.remaining, i18n.language)} {t('common.currency')}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="ui-empty-state">{t('reports.noOutstandingCurrently')}</div>
+            <EmptyState title={t('reports.noOutstandingCurrently')} />
           )}
         </div>
       </div>

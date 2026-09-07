@@ -26,7 +26,25 @@ export default function Login() {
       await login(formData.email, formData.password, formData.rememberMe);
       navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('login.invalidCredentials'));
+      const error = err as Error & { status?: number };
+      const status = error.status || 0;
+
+      // Handle errors by HTTP status code instead of string matching
+      if (status === 429) {
+        setError(t('login.tooManyAttempts'));
+      } else if (status === 401) {
+        // 401 covers both invalid credentials and inactive accounts
+        // Backend returns generic message for both, so we use the message text
+        // to distinguish between them if available
+        const errorMessage = error.message;
+        if (errorMessage.includes('inactive') || errorMessage.includes('تعطيل')) {
+          setError(t('login.accountInactive'));
+        } else {
+          setError(t('login.invalidCredentials'));
+        }
+      } else {
+        setError(error.message || t('login.invalidCredentials'));
+      }
     } finally {
       setLoading(false);
     }
@@ -104,7 +122,12 @@ export default function Login() {
                 />
                 {t('login.rememberMe')}
               </label>
-              <button type="button" className="text-[13px] text-[#173B78] hover:underline" disabled={loading}>
+              <button
+                type="button"
+                className="text-[13px] text-[#64748B] cursor-not-allowed opacity-50"
+                disabled={true}
+                title="Password reset is not yet available"
+              >
                 {t('login.forgotPassword')}
               </button>
             </div>

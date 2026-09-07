@@ -1,15 +1,21 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { appointmentsService, CreateAppointmentDto } from '../services/appointments.service';
 import { patientsService } from '../services/patients.service';
 import { useTranslation } from 'react-i18next';
 import DateInput from '../components/DateInput';
 import TimeInput from '../components/TimeInput';
+import { getReturnTo } from '../utils/listState';
+import { useToast } from '../contexts/ToastContext';
+import PageHeader from '../components/PageHeader';
 
 export default function AppointmentForm() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getReturnTo(searchParams.toString(), '/appointments');
+  const { showToast } = useToast();
   const [formData, setFormData] = useState<CreateAppointmentDto>({
     patientId: '',
     scheduledAt: '',
@@ -31,9 +37,11 @@ export default function AppointmentForm() {
   const createMutation = useMutation({
     mutationFn: (data: CreateAppointmentDto) => appointmentsService.createAppointment(data),
     onSuccess: (data) => {
-      navigate(`/appointments/${data.id}`);
+      showToast({ type: 'success', message: t('feedback.appointmentCreated') });
+      navigate(`/appointments/${data.id}?returnTo=${encodeURIComponent(returnTo)}`);
     },
     onError: (error: Error) => {
+      showToast({ type: 'error', message: error.message || t('appointments.createError') });
       setErrors({ general: error.message || t('appointments.createError') });
     },
   });
@@ -79,25 +87,20 @@ export default function AppointmentForm() {
   };
 
   const handleCancel = () => {
-    navigate('/appointments');
+    navigate(returnTo);
   };
 
   return (
     <div className="min-h-screen bg-[#F6F7FA]">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">{t('appointments.newAppointment')}</h1>
-          <button
-            onClick={handleCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-        </div>
+      <div className="container mx-auto px-4 py-5 sm:py-8">
+        <PageHeader
+          title={t('appointments.newAppointment')}
+          breadcrumbs={[{ label: t('sidebar.appointments'), href: returnTo }, { label: t('appointments.newAppointment') }]}
+          actions={<button onClick={handleCancel} className="btn-primary px-4 py-2">{t('common.cancel')}</button>}
+        />
 
         {/* Form */}
-        <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl">
+        <div className="w-full max-w-2xl rounded-lg bg-white p-4 shadow-md sm:p-6">
           {errors.general && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
               {errors.general}
@@ -147,7 +150,7 @@ export default function AppointmentForm() {
             </div>
 
             {/* Date and Time */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   {t('common.date')} <span className="text-red-500">*</span>
@@ -201,18 +204,18 @@ export default function AppointmentForm() {
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex justify-end gap-4">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                className="w-full rounded-md bg-gray-200 px-6 py-2 text-gray-700 transition-colors hover:bg-gray-300 sm:w-auto"
               >
                 {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="px-6 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-md bg-[#111844] px-6 py-2 text-white transition-colors hover:bg-[#1a237e] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {createMutation.isPending ? t('appointments.booking') : t('appointments.bookAppointment')}
               </button>

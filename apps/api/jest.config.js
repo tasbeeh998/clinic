@@ -7,6 +7,7 @@ module.exports = {
     '^.+\\.ts$': 'ts-jest',
   },
   setupFiles: ['<rootDir>/src/test-env-setup.ts'],
+  maxWorkers: 1, // Run tests sequentially to avoid database conflicts
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.spec.ts',

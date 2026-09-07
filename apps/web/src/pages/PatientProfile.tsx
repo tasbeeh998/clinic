@@ -1,10 +1,18 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { patientsService } from '../services/patients.service';
 import { visitsService } from '../services/visits.service';
+import { invoicesService } from '../services/invoices.service';
+import { appointmentsService } from '../services/appointments.service';
+import { paymentsService, Payment } from '../services/payments.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate, formatDateTime } from '../utils/dateFormat';
+import { getReturnTo, preserveListState } from '../utils/listState';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
+import MobileRecordCard, { MobileRecordField } from '../components/MobileRecordCard';
 
 type TabType = 'overview' | 'visits' | 'invoices' | 'payments' | 'appointments';
 
@@ -12,6 +20,8 @@ export default function PatientProfile() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const patientsListReturnTo = getReturnTo(searchParams.toString(), '/patients');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const { data: patient, isLoading, error } = useQuery({
@@ -25,6 +35,24 @@ export default function PatientProfile() {
     queryFn: () => visitsService.getPatientVisits(id!),
     enabled: !!id && activeTab === 'visits',
   });
+  const { data: invoicesData } = useQuery({
+    queryKey: ['patientInvoices', id],
+    queryFn: () => invoicesService.getInvoices(id!, undefined, 1, 50),
+    enabled: !!id && (activeTab === 'invoices' || activeTab === 'payments'),
+  });
+  const { data: appointmentsData } = useQuery({
+    queryKey: ['patientAppointments', id],
+    queryFn: () => appointmentsService.getAppointments(undefined, undefined, id!, 1, 50),
+    enabled: !!id && activeTab === 'appointments',
+  });
+  const { data: payments = [] } = useQuery<Payment[]>({
+    queryKey: ['patientPayments', id, invoicesData?.data.map((invoice) => invoice.id)],
+    queryFn: async () => {
+      const invoices = invoicesData?.data || [];
+      return (await Promise.all(invoices.map((invoice) => paymentsService.getPaymentsForInvoice(invoice.id)))).flat();
+    },
+    enabled: !!id && activeTab === 'payments' && !!invoicesData,
+  });
 
   const visits = visitsData?.data || [];
 
@@ -32,12 +60,9 @@ export default function PatientProfile() {
     return (
       <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="h-64 bg-gray-200 rounded"></div>
-              <div className="col-span-2 h-64 bg-gray-200 rounded"></div>
-            </div>
+          <div className="ui-card p-6 space-y-3">
+            <Skeleton className="h-8 rounded-lg" />
+            <Skeleton className="h-64 rounded-lg" count={2} />
           </div>
         </div>
       </div>
@@ -48,7 +73,7 @@ export default function PatientProfile() {
     return (
       <div className="min-h-screen bg-[#F6F7FA]">
         <div className="container mx-auto px-4 py-8">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <div className="ui-card p-6 text-center text-[#C4362B] text-sm" role="alert">
             {t('patients.detailLoadError')}
           </div>
         </div>
@@ -67,18 +92,11 @@ export default function PatientProfile() {
   return (
     <div className="min-h-screen bg-[#F6F7FA]">
       <div className="container mx-auto px-4 py-8">
-        {/* Breadcrumb */}
-        <div className="mb-6 flex items-center text-sm text-gray-600">
-          <button
-            onClick={() => navigate('/patients')}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-gray-700 sm:w-auto sm:h-auto sm:rounded-none sm:bg-transparent sm:shadow-none sm:hover:text-[#111844]"
-          >
-            <span className="sm:hidden">{i18n.language === 'ar' ? '›' : '‹'}</span>
-            <span className="hidden sm:inline">{t('sidebar.patients')}</span>
-          </button>
-          <span className="hidden sm:inline mx-2">/</span>
-          <span className="hidden sm:inline text-gray-900">{patient.fullNameAr}</span>
-        </div>
+        <PageHeader
+          title={patient.fullNameAr}
+          subtitle={patient.civilId}
+          breadcrumbs={[{ label: t('sidebar.patients'), href: patientsListReturnTo }, { label: patient.fullNameAr }]}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Profile Panel (Right side in RTL) */}
@@ -136,7 +154,7 @@ export default function PatientProfile() {
               <div className="space-y-3">
                 {/* + New Visit - Primary Action */}
                 <button
-                  onClick={() => navigate(`/visits/new?patientId=${patient.id}`)}
+                  onClick={() => navigate(preserveListState(`/visits/new?patientId=${patient.id}`, { pathname: `/patients/${patient.id}`, search: '' }))}
                   className="w-full py-3 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors font-medium"
                 >
                   + {t('visits.newVisit')}
@@ -144,7 +162,7 @@ export default function PatientProfile() {
 
                 {/* Edit Patient */}
                 <button
-                  onClick={() => navigate(`/patients/${patient.id}/edit`)}
+                  onClick={() => navigate(preserveListState(`/patients/${patient.id}/edit`, { pathname: `/patients/${patient.id}`, search: searchParams.toString() }))}
                   className="w-full py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
                 >
                   {t('patients.editData')}
@@ -165,12 +183,12 @@ export default function PatientProfile() {
             <div className="bg-white rounded-lg shadow-md">
               {/* Tabs */}
               <div className="border-b border-gray-200">
-                <nav className="flex space-x-0 space-x-reverse">
+                <nav className="grid grid-cols-2 sm:flex sm:flex-wrap" aria-label="Patient sections">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-6 py-4 text-sm font-medium transition-colors ${activeTab === tab.id
+                      className={`px-3 py-3 text-sm font-medium transition-colors sm:px-6 sm:py-4 ${activeTab === tab.id
                           ? 'text-[#111844] border-b-2 border-[#111844]'
                           : 'text-gray-500 hover:text-gray-700'
                         }`}
@@ -212,51 +230,66 @@ export default function PatientProfile() {
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-semibold text-gray-900">{t('patients.visitsHistory')}</h3>
                       <button
-                        onClick={() => navigate(`/visits/new?patientId=${id}`)}
+                        onClick={() => navigate(preserveListState(`/visits/new?patientId=${id}`, { pathname: `/patients/${id}`, search: '' }))}
                         className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors text-sm"
                       >
                         + {t('visits.newVisit')}
                       </button>
                     </div>
                     {visits.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        {t('patients.noVisitsRecorded')}
-                      </div>
+                      <EmptyState title={t('patients.noVisitsRecorded')} />
                     ) : (
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('common.date')}</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.type')}</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('sidebar.appointments')}</th>
-                            <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.notesLabel')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
+                      <>
+                        <div className="mobile-record-list md:hidden">
                           {visits.map((visit) => (
-                            <tr key={visit.id}>
-                              <td className="px-4 py-3 text-gray-900">
-                                {formatDateTime(visit.visitDate, i18n.language)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${visit.type === 'CHECKUP' ? 'bg-blue-100 text-blue-700' :
-                                    visit.type === 'FOLLOW_UP' ? 'bg-green-100 text-green-700' :
-                                      'bg-gray-100 text-gray-700'
-                                  }`}>
-                                  {visit.type === 'CHECKUP' ? t('visits.typeCheckup') :
-                                    visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-gray-600">
-                                {visit.appointment ? formatDate(visit.appointment.scheduledAt, i18n.language) : '-'}
-                              </td>
-                              <td className="px-4 py-3 text-gray-600 text-sm">
-                                {visit.notes || '-'}
-                              </td>
-                            </tr>
+                            <MobileRecordCard
+                              key={visit.id}
+                              title={formatDateTime(visit.visitDate, i18n.language)}
+                              subtitle={visit.notes || undefined}
+                              onClick={() => navigate(preserveListState(`/visits/${visit.id}`, { pathname: `/patients/${patient.id}`, search: '' }))}
+                            >
+                              <MobileRecordField label={t('visits.type')} value={visit.type === 'CHECKUP' ? t('visits.typeCheckup') : visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')} />
+                              <MobileRecordField label={t('sidebar.appointments')} value={visit.appointment ? formatDate(visit.appointment.scheduledAt, i18n.language) : '-'} />
+                            </MobileRecordCard>
                           ))}
-                        </tbody>
-                      </table>
+                        </div>
+                        <div className="hidden md:block">
+                          <table className="w-full">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('common.date')}</th>
+                                <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.type')}</th>
+                                <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('sidebar.appointments')}</th>
+                                <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">{t('visits.notesLabel')}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {visits.map((visit) => (
+                                <tr key={visit.id} onClick={() => navigate(preserveListState(`/visits/${visit.id}`, { pathname: `/patients/${patient.id}`, search: '' }))} className="cursor-pointer hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-gray-900">
+                                    {formatDateTime(visit.visitDate, i18n.language)}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${visit.type === 'CHECKUP' ? 'bg-blue-100 text-blue-700' :
+                                      visit.type === 'FOLLOW_UP' ? 'bg-green-100 text-green-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
+                                      {visit.type === 'CHECKUP' ? t('visits.typeCheckup') :
+                                        visit.type === 'FOLLOW_UP' ? t('visits.typeFollowUp') : t('visits.typeOther')}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600">
+                                    {visit.appointment ? formatDate(visit.appointment.scheduledAt, i18n.language) : '-'}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-600 text-sm">
+                                    {visit.notes || '-'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -264,27 +297,39 @@ export default function PatientProfile() {
                 {activeTab === 'invoices' && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.invoicesHistory')}</h3>
-                    <div className="text-center py-8 text-gray-500">
-                      {t('patients.noInvoicesRecorded')}
-                    </div>
+                    {(invoicesData?.data || []).length === 0 ? <EmptyState title={t('patients.noInvoicesRecorded')} /> : (
+                      <div className="space-y-2">{invoicesData?.data.map((invoice) => (
+                        <button key={invoice.id} onClick={() => navigate(preserveListState(`/invoices/${invoice.id}`, { pathname: `/patients/${patient.id}`, search: '' }))} className="flex w-full flex-col gap-1 rounded bg-gray-50 p-3 text-right hover:bg-gray-100 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="font-medium">{invoice.invoiceNumber}</span><span>{formatDate(invoice.createdAt, i18n.language)} · {invoice.total} {t('common.currency')}</span>
+                        </button>
+                      ))}</div>
+                    )}
                   </div>
                 )}
 
                 {activeTab === 'payments' && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.paymentsHistory')}</h3>
-                    <div className="text-center py-8 text-gray-500">
-                      {t('patients.noPaymentsRecorded')}
-                    </div>
+                    {payments.length === 0 ? <EmptyState title={t('patients.noPaymentsRecorded')} /> : (
+                      <div className="space-y-2">{payments.map((payment) => (
+                        <button key={payment.id} onClick={() => navigate(preserveListState(`/invoices/${payment.invoiceId}`, { pathname: `/patients/${patient.id}`, search: '' }))} className="flex w-full flex-col gap-1 rounded bg-gray-50 p-3 text-right hover:bg-gray-100 sm:flex-row sm:items-center sm:justify-between">
+                          <span>{formatDate(payment.paymentDate, i18n.language)}</span><span className="font-semibold">{payment.amount} {t('common.currency')}</span>
+                        </button>
+                      ))}</div>
+                    )}
                   </div>
                 )}
 
                 {activeTab === 'appointments' && (
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('patients.appointmentsHistory')}</h3>
-                    <div className="text-center py-8 text-gray-500">
-                      {t('patients.noAppointmentsRecorded')}
-                    </div>
+                    {(appointmentsData?.data || []).length === 0 ? <EmptyState title={t('patients.noAppointmentsRecorded')} /> : (
+                      <div className="space-y-2">{appointmentsData?.data.map((appointment) => (
+                        <button key={appointment.id} onClick={() => navigate(preserveListState(`/appointments/${appointment.id}`, { pathname: `/patients/${patient.id}`, search: '' }))} className="w-full flex justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 text-right">
+                          <span>{formatDateTime(appointment.scheduledAt, i18n.language)}</span><span>{appointment.status}</span>
+                        </button>
+                      ))}</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -295,4 +340,5 @@ export default function PatientProfile() {
     </div>
   );
 }
+
 

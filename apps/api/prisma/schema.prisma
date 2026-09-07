@@ -219,6 +219,8 @@ model Invoice {
   @@index([status])
   @@index([issuedAt])
   @@index([paymentStatus])
+  // Partial unique index enforced via migration: at most one active (DRAFT or ISSUED) invoice per visit
+  // See migration: 20260906090000_add_one_active_invoice_per_visit_constraint
 }
 
 model InvoiceItem {

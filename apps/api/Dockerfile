@@ -32,10 +32,15 @@ RUN npm install
 
 COPY src ./src
 COPY prisma ./prisma
+COPY create-admin.js ./
 
 RUN npm run prisma:generate
 RUN npm run build
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Development must not apply migration history to an existing local database
+# automatically. Fresh or legacy local data is preserved; migrations are an
+# explicit developer action after a reviewed backup/baseline decision.
+CMD ["node", "dist/main.js"]
+

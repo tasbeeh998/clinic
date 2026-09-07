@@ -1,4 +1,5 @@
 import { CLINIC_LOGO_BASE64 } from './clinic-logo';
+import { Decimal } from '@prisma/client/runtime/library';
 
 // Loose shape matching InvoicesService.findOne()'s include (invoiceItems + service.code,
 // patient, visit + diagnosis, payments). Kept local (rather than importing Prisma's
@@ -151,9 +152,7 @@ const T = {
 } as const;
 
 function formatMoney(value: number | string): string {
-  // Matches the approved design exactly (2 decimals), even though KWD is
-  // normally quoted to 3 — an explicit, deliberate choice for this invoice.
-  return Number(value).toFixed(2);
+  return new Decimal(String(value)).toDecimalPlaces(2).toFixed(2);
 }
 
 function formatDate(value: string | Date): string {
@@ -551,4 +550,5 @@ export function buildWhatsAppShareUrl(
       : `Attached is your invoice No. ${invoiceNumber} from Specialized Clinics Center.`;
   return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;
 }
+
 

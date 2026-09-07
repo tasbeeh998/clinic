@@ -101,7 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' }));
-      throw new Error(errorData.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      const error = new Error(errorData.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة') as Error & { status?: number };
+      error.status = response.status;
+      throw error;
     }
 
     const data = await response.json();

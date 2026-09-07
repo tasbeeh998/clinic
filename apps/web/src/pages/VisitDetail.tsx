@@ -1,14 +1,21 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, User, Phone, IdCard, Calendar, Stethoscope, FileText, ReceiptText } from 'lucide-react';
 import { visitsService, VisitStatus } from '../services/visits.service';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../utils/dateFormat';
+import { formatMoney } from '../utils/money';
+import { getReturnTo } from '../utils/listState';
+import { preserveListState } from '../utils/listState';
+import PageHeader from '../components/PageHeader';
+import Skeleton from '../components/Skeleton';
 
 export default function VisitDetail() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getReturnTo(searchParams.toString(), '/visits');
 
   const STATUS_LABELS: Record<VisitStatus, string> = {
     SCHEDULED: t('visits.statusScheduled'),
@@ -40,9 +47,7 @@ export default function VisitDetail() {
   if (isLoading) {
     return (
       <div className="page-container">
-        <div className="ui-card p-6 space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="ui-skeleton h-8 rounded-lg" />)}
-        </div>
+        <div className="ui-card p-6 space-y-3"><Skeleton className="h-8 rounded-lg" count={5} /></div>
       </div>
     );
   }
@@ -57,20 +62,17 @@ export default function VisitDetail() {
 
   return (
     <div className="page-container">
-      <button onClick={() => navigate('/visits')} className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-md text-[#64748B] mb-4 sm:w-auto sm:h-auto sm:rounded-none sm:bg-transparent sm:shadow-none sm:gap-1.5 sm:hover:text-[#102F63] sm:text-sm">
+      <button onClick={() => navigate(returnTo)} className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#102F63] mb-4">
         <ArrowRight size={16} strokeWidth={1.75} />
         <span className="hidden sm:inline">{t('visits.backToVisits')}</span>
       </button>
 
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-[22px] font-bold text-[#102F63]">{t('visits.detailsTitle')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{formatDateTime(visit.visitDate, i18n.language)}</p>
-        </div>
-        <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.1)', color: 'var(--brand-blue)' }}>
-          {STATUS_LABELS[visit.status]}
-        </span>
-      </div>
+      <PageHeader
+        title={t('visits.detailsTitle')}
+        subtitle={formatDateTime(visit.visitDate, i18n.language)}
+        breadcrumbs={[{ label: t('sidebar.visits'), href: returnTo }, { label: t('visits.detailsTitle') }]}
+        actions={<span className="ui-badge" style={{ background: 'rgba(23,59,120,0.1)', color: 'var(--brand-blue)' }}>{STATUS_LABELS[visit.status]}</span>}
+      />
 
       <div className="grid md:grid-cols-2 gap-5 mb-5">
         <div className="ui-card p-5">
@@ -79,12 +81,17 @@ export default function VisitDetail() {
             {t('visits.patientInfo')}
           </h2>
           <div className="space-y-3 text-sm">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
               <User size={15} strokeWidth={1.75} className="text-[#94A3B8]" />
               <span className="text-[#64748B]">{t('visits.nameLabel')}</span>
-              <span className="font-medium text-[#1F2430]">{visit.patient.fullNameAr}</span>
+              <Link
+                to={preserveListState(`/patients/${visit.patient.id}`, { pathname: `/visits/${visit.id}`, search: '' })}
+                className="font-medium text-[#1F2430] hover:text-[#102F63] hover:underline"
+              >
+                {visit.patient.fullNameAr}
+              </Link>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
               <IdCard size={15} strokeWidth={1.75} className="text-[#94A3B8]" />
               <span className="text-[#64748B]">{t('patients.civilId')}:</span>
               <span className="font-medium text-[#1F2430] font-mono">{visit.patient.civilId}</span>
@@ -112,13 +119,13 @@ export default function VisitDetail() {
               <span className="font-medium text-[#1F2430]">{TYPE_LABELS[visit.type]}</span>
             </div>
             {visit.diagnosis && (
-              <div className="flex items-start gap-2">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:gap-2">
                 <span className="text-[#64748B] shrink-0">{t('visits.diagnosisLabel')}</span>
                 <span className="font-medium text-[#1F2430]">{visit.diagnosis}</span>
               </div>
             )}
             {visit.notes && (
-              <div className="flex items-start gap-2">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:gap-2">
                 <span className="text-[#64748B] shrink-0">{t('visits.notesLabel')}</span>
                 <span className="text-[#1F2430]">{visit.notes}</span>
               </div>
@@ -153,29 +160,34 @@ export default function VisitDetail() {
         </h2>
         {invoice ? (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
+            <div className="mb-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.number')}</div>
-                <div className="font-medium text-[#1F2430]">{invoice.invoiceNumber}</div>
+                <Link
+                  to={preserveListState(`/invoices/${invoice.id}`, { pathname: `/visits/${visit.id}`, search: '' })}
+                  className="font-medium text-[#1F2430] hover:text-[#102F63] hover:underline"
+                >
+                  {invoice.invoiceNumber}
+                </Link>
               </div>
               <div>
                 <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.total')}</div>
-                <div className="font-medium text-[#1F2430]">{parseFloat(invoice.total).toFixed(2)} {t('common.currency')}</div>
+                <div className="font-medium text-[#1F2430]">{formatMoney(invoice.total, i18n.language)} {t('common.currency')}</div>
               </div>
               <div>
                 <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.paid')}</div>
-                <div className="font-medium text-[#1F2430]">{parseFloat(invoice.paid).toFixed(2)} {t('common.currency')}</div>
+                <div className="font-medium text-[#1F2430]">{formatMoney(invoice.paid, i18n.language)} {t('common.currency')}</div>
               </div>
               <div>
                 <div className="text-[#94A3B8] text-xs mb-1">{t('invoices.remaining')}</div>
-                <div className="font-medium text-[#C4362B]">{parseFloat(invoice.remaining).toFixed(2)} {t('common.currency')}</div>
+                <div className="font-medium text-[#C4362B]">{formatMoney(invoice.remaining, i18n.language)} {t('common.currency')}</div>
               </div>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="ui-badge" style={{ background: 'rgba(23,59,120,0.08)', color: 'var(--brand-blue)' }}>
                 {PAYMENT_STATUS_LABELS[invoice.paymentStatus]}
               </span>
-              <button onClick={() => navigate(`/invoices/${invoice.id}`)} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
+              <button onClick={() => navigate(preserveListState(`/invoices/${invoice.id}`, { pathname: `/visits/${visit.id}`, search: '' }))} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm">
                 <ReceiptText size={16} strokeWidth={1.75} />
                 {t('visits.viewInvoiceBtn')}
               </button>

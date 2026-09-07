@@ -97,8 +97,27 @@ The backend will be available at http://localhost:3001/api
 
 1. Start all services:
 ```bash
-docker-compose up
+docker compose up --build
 ```
+
+The compose file pins the development project name to `clinic`, so `api`,
+`web`, and `postgres` always share the `clinic_default` network. Do not use
+manual `docker network connect` commands.
+
+Create or reset the local development administrator from inside the API
+container (never from Windows or against a non-development database):
+
+```bash
+docker compose exec api npm run seed:dev-admin
+```
+
+This development-only command is idempotent and refuses to run unless it is
+inside the Compose API container targeting the local development database.
+
+The development container deliberately does not run `prisma migrate deploy`
+automatically. This protects existing local data created before migration
+history was introduced. Apply or baseline migrations explicitly only after
+reviewing a backup of local development data.
 
 2. To stop services:
 ```bash
