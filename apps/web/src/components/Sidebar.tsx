@@ -11,9 +11,12 @@ import {
   Settings,
   X,
   Languages,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { setLanguage } from '../i18n/config';
+import { useState } from 'react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -27,15 +30,35 @@ interface NavItem {
   adminOnly?: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { labelKey: 'sidebar.dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { labelKey: 'sidebar.patients', path: '/patients', icon: UsersRound },
-  { labelKey: 'sidebar.appointments', path: '/appointments', icon: CalendarDays },
-  { labelKey: 'sidebar.visits', path: '/visits', icon: ClipboardList },
-  { labelKey: 'sidebar.services', path: '/services', icon: Stethoscope, adminOnly: true },
-  { labelKey: 'sidebar.invoices', path: '/invoices', icon: ReceiptText },
-  { labelKey: 'sidebar.reports', path: '/reports', icon: BarChart3, adminOnly: true },
-  { labelKey: 'sidebar.settings', path: '/settings', icon: Settings, adminOnly: true },
+interface NavGroup {
+  labelKey: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    labelKey: 'sidebar.operations',
+    items: [
+      { labelKey: 'sidebar.dashboard', path: '/dashboard', icon: LayoutDashboard },
+      { labelKey: 'sidebar.patients', path: '/patients', icon: UsersRound },
+      { labelKey: 'sidebar.appointments', path: '/appointments', icon: CalendarDays },
+      { labelKey: 'sidebar.visits', path: '/visits', icon: ClipboardList },
+    ],
+  },
+  {
+    labelKey: 'sidebar.billing',
+    items: [
+      { labelKey: 'sidebar.invoices', path: '/invoices', icon: ReceiptText },
+      { labelKey: 'sidebar.reports', path: '/reports', icon: BarChart3, adminOnly: true },
+    ],
+  },
+  {
+    labelKey: 'sidebar.administration',
+    items: [
+      { labelKey: 'sidebar.services', path: '/services', icon: Stethoscope, adminOnly: true },
+      { labelKey: 'sidebar.settings', path: '/settings', icon: Settings, adminOnly: true },
+    ],
+  },
 ];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
@@ -44,8 +67,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    operations: true,
+    billing: true,
+    administration: true,
+  });
 
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
 
   const isActive = (path: string) =>
     location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
@@ -72,23 +102,49 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="text-[11px] text-white/60 mt-0.5">Specialized Clinics Center</div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {items.map((item) => {
-          const active = isActive(item.path);
-          const Icon = item.icon;
+      <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
+        {NAV_GROUPS.map((group) => {
+          const groupItems = group.items.filter((item) => !item.adminOnly || isAdmin);
+          if (groupItems.length === 0) return null;
+
+          const isRTL = i18n.language === 'ar';
+          const ChevronIcon = isRTL ? ChevronLeft : ChevronRight;
+
           return (
-            <button
-              key={item.path}
-              onClick={() => handleNavigate(item.path)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[14px] transition-colors ${
-                active
-                  ? 'bg-white/12 text-white font-semibold'
-                  : 'text-white/70 hover:bg-white/8 hover:text-white'
-              }`}
-            >
-              <Icon size={18} strokeWidth={1.75} />
-              <span>{t(item.labelKey)}</span>
-            </button>
+            <div key={group.labelKey}>
+              <button
+                onClick={() => toggleGroup(group.labelKey)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-white/60 text-xs font-medium uppercase tracking-wider hover:text-white/80 transition-colors"
+              >
+                {t(group.labelKey)}
+                <ChevronIcon
+                  size={14}
+                  className={`transition-transform ${expandedGroups[group.labelKey] ? 'rotate-90' : ''}`}
+                />
+              </button>
+              {expandedGroups[group.labelKey] && (
+                <div className="mt-1 space-y-1">
+                  {groupItems.map((item) => {
+                    const active = isActive(item.path);
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => handleNavigate(item.path)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] transition-colors ${
+                          active
+                            ? 'bg-white/12 text-white font-semibold'
+                            : 'text-white/70 hover:bg-white/8 hover:text-white'
+                        }`}
+                      >
+                        <Icon size={18} strokeWidth={1.75} />
+                        <span>{t(item.labelKey)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

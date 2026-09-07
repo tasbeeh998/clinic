@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Plus, Calendar } from 'lucide-react';
 import { appointmentsService, Appointment } from '../services/appointments.service';
 import { useTranslation } from 'react-i18next';
 import { formatTime as formatTimeUtil } from '../utils/dateFormat';
-
-type ViewType = 'calendar' | 'list';
+import { getStatusConfig } from '../utils/formatters';
 
 export default function AppointmentsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [viewType, setViewType] = useState<ViewType>('calendar');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [statusFilter, setStatusFilter] = useState<string>('');
 
   const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const { data, isLoading, error } = useQuery({
@@ -24,15 +26,7 @@ export default function AppointmentsList() {
   });
 
   const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      BOOKED: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('appointments.statusBooked') },
-      CONFIRMED: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: t('appointments.statusConfirmed') },
-      DONE: { bg: 'bg-green-100', text: 'text-green-700', label: t('appointments.statusDone') },
-      CANCELLED: { bg: 'bg-red-100', text: 'text-red-700', label: t('appointments.statusCancelled') },
-      NO_SHOW: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: t('appointments.statusNoShow') },
-    };
-
-    const config = statusConfig[status] || statusConfig.BOOKED;
+    const config = getStatusConfig(status, t);
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
         {config.label}
@@ -50,6 +44,10 @@ export default function AppointmentsList() {
     setSelectedDate(newDate);
   };
 
+  const handleToday = () => {
+    setSelectedDate(new Date());
+  };
+
   const handleAppointmentClick = (appointment: Appointment) => {
     navigate(`/appointments/${appointment.id}`);
   };
@@ -61,19 +59,20 @@ export default function AppointmentsList() {
     return date.toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA]">
-        <div className="container mx-auto px-4 py-8">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-            <div className="h-12 bg-gray-200 rounded mb-4"></div>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-200 rounded"></div>
-              ))}
-            </div>
-          </div>
+      <div className="page-container">
+        <div className="ui-card p-6 space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="ui-skeleton h-16 rounded-lg" />
+          ))}
         </div>
       </div>
     );
@@ -81,179 +80,162 @@ export default function AppointmentsList() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#F6F7FA]">
-        <div className="container mx-auto px-4 py-8">
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {t('appointments.loadError')}
-          </div>
-        </div>
+      <div className="page-container">
+        <div className="ui-card p-6 text-center text-[#C4362B] text-sm">{t('appointments.loadError')}</div>
       </div>
     );
   }
 
   const appointments = data?.data || [];
+  const meta = data?.meta;
 
-  // Generate time slots for calendar view
-  const timeSlots = [];
-  for (let hour = 8; hour <= 20; hour++) {
-    timeSlots.push(`${hour.toString().padStart(2, '0')}:00`);
-    timeSlots.push(`${hour.toString().padStart(2, '0')}:30`);
-  }
+  const sortedAppointments = appointments.sort((a, b) =>
+    new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+  );
 
   return (
-    <div className="min-h-screen bg-[#F6F7FA]">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#111844]">{t('sidebar.appointments')}</h1>
-          <button
-            onClick={handleNewAppointment}
-            className="px-4 py-2 bg-[#111844] text-white rounded-md hover:bg-[#1a237e] transition-colors"
-          >
-            + {t('appointments.newAppointment')}
-          </button>
+    <div className="page-container">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.appointments')}</h1>
+          <p className="text-sm text-[#64748B] mt-1">
+            {t('appointments.subtitle')}
+            {meta && meta.total > 0 && (
+              <span className="font-medium text-[#102F63]"> · {meta.total} {t('common.appointments')}</span>
+            )}
+          </p>
         </div>
+        <button
+          onClick={handleNewAppointment}
+          className="btn-primary flex items-center gap-2 px-4 sm:w-auto w-full justify-center"
+        >
+          <Plus size={18} strokeWidth={2} />
+          {t('appointments.newAppointment')}
+        </button>
+      </div>
 
-        {/* Controls */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            {/* Date Navigation */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => handleDateChange(-1)}
-                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                {t('common.previous')}
-              </button>
-              <span className="font-medium text-gray-900 min-w-[200px] text-center">
-                {formatDateDisplay(selectedDate)}
-              </span>
-              <button
-                onClick={() => handleDateChange(1)}
-                className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                {t('common.next')}
-              </button>
-            </div>
-
-            {/* View Toggle */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewType('calendar')}
-                className={`px-3 py-1 rounded ${
-                  viewType === 'calendar'
-                    ? 'bg-[#111844] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {t('appointments.calendarView')}
-              </button>
-              <button
-                onClick={() => setViewType('list')}
-                className={`px-3 py-1 rounded ${
-                  viewType === 'list'
-                    ? 'bg-[#111844] text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {t('appointments.listView')}
-              </button>
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded"
+      {/* Controls */}
+      <div className="ui-card p-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+          {/* Date Navigation */}
+          <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-2 sm:pb-0">
+            <button
+              onClick={() => handleDateChange(-1)}
+              className="px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F6F8FC] text-sm whitespace-nowrap"
             >
-              <option value="">{t('common.allStatuses')}</option>
-              <option value="BOOKED">{t('appointments.statusBooked')}</option>
-              <option value="CONFIRMED">{t('appointments.statusConfirmed')}</option>
-              <option value="DONE">{t('appointments.statusDone')}</option>
-              <option value="CANCELLED">{t('appointments.statusCancelled')}</option>
-              <option value="NO_SHOW">{t('appointments.statusNoShow')}</option>
-            </select>
+              {t('common.previous')}
+            </button>
+            <button
+              onClick={handleToday}
+              className={`px-3 py-1.5 border rounded text-sm whitespace-nowrap ${
+                isToday(selectedDate)
+                  ? 'bg-[#102F63] text-white border-[#102F63]'
+                  : 'border-[#E2E8F0] hover:bg-[#F6F8FC]'
+              }`}
+            >
+              {t('common.today')}
+            </button>
+            <button
+              onClick={() => handleDateChange(1)}
+              className="px-3 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F6F8FC] text-sm whitespace-nowrap"
+            >
+              {t('common.next')}
+            </button>
+            <span className="font-medium text-[#102F63] min-w-[200px] text-center text-sm">
+              {formatDateDisplay(selectedDate)}
+            </span>
           </div>
+
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="ui-input w-full sm:w-auto"
+          >
+            <option value="">{t('common.allStatuses')}</option>
+            <option value="BOOKED">{t('appointments.statusBooked')}</option>
+            <option value="CONFIRMED">{t('appointments.statusConfirmed')}</option>
+            <option value="DONE">{t('appointments.statusDone')}</option>
+            <option value="CANCELLED">{t('appointments.statusCancelled')}</option>
+            <option value="NO_SHOW">{t('appointments.statusNoShow')}</option>
+          </select>
         </div>
+      </div>
 
-        {/* Calendar View */}
-        {viewType === 'calendar' && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="divide-y divide-gray-200">
-              {timeSlots.map((time) => {
-                const slotAppointments = appointments.filter((apt) => {
-                  const aptTime = formatTime(apt.scheduledAt);
-                  return aptTime === time;
-                });
-
-                return (
-                  <div
-                    key={time}
-                    className="flex items-center p-4 hover:bg-gray-50 min-h-[60px]"
-                  >
-                    <div className="w-20 text-sm font-medium text-gray-600">{time}</div>
-                    <div className="flex-1">
-                      {slotAppointments.length > 0 ? (
-                        slotAppointments.map((apt) => (
-                          <div
-                            key={apt.id}
-                            onClick={() => handleAppointmentClick(apt)}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded cursor-pointer hover:bg-gray-100 mb-2"
-                          >
-                            <div>
-                              <div className="font-medium text-gray-900">{apt.patient.fullNameAr}</div>
-                              <div className="text-sm text-gray-500">{apt.patient.civilId}</div>
-                            </div>
-                            {getStatusBadge(apt.status)}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-gray-400 text-sm">{t('appointments.slotAvailable')}</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Agenda View */}
+      <div className="ui-card overflow-hidden p-0">
+        {sortedAppointments.length === 0 ? (
+          <div className="p-12 text-center text-[#64748B]">
+            <Calendar size={48} strokeWidth={1.5} className="mx-auto mb-3 text-[#94A3B8]" />
+            <p className="text-sm">{t('appointments.noAppointmentsToday')}</p>
           </div>
-        )}
-
-        {/* List View */}
-        {viewType === 'list' && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            {appointments.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                {t('appointments.noAppointmentsToday')}
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50">
+        ) : (
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <table className="ui-table">
+                <thead>
                   <tr>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('visits.time')}</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('visits.patient')}</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('patients.civilId')}</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('common.status')}</th>
+                    <th>{t('visits.time')}</th>
+                    <th>{t('visits.patient')}</th>
+                    <th>{t('patients.civilId')}</th>
+                    <th>{t('common.status')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {appointments
-                    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-                    .map((apt) => (
-                      <tr
-                        key={apt.id}
-                        onClick={() => handleAppointmentClick(apt)}
-                        className="hover:bg-gray-50 cursor-pointer"
-                      >
-                        <td className="px-6 py-4 text-gray-900">{formatTime(apt.scheduledAt)}</td>
-                        <td className="px-6 py-4 font-medium text-gray-900">{apt.patient.fullNameAr}</td>
-                        <td className="px-6 py-4 text-gray-600">{apt.patient.civilId}</td>
-                        <td className="px-6 py-4">{getStatusBadge(apt.status)}</td>
-                      </tr>
-                    ))}
+                <tbody>
+                  {sortedAppointments.map((apt) => (
+                    <tr
+                      key={apt.id}
+                      onClick={() => handleAppointmentClick(apt)}
+                      className="hover:bg-[#F6F8FC] cursor-pointer"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleAppointmentClick(apt);
+                        }
+                      }}
+                    >
+                      <td className="text-[#1F2430] font-medium">{formatTime(apt.scheduledAt)}</td>
+                      <td className="font-medium text-[#1F2430]">{apt.patient.fullNameAr}</td>
+                      <td className="text-[#64748B]">{apt.patient.civilId}</td>
+                      <td>{getStatusBadge(apt.status)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-3 p-4">
+              {sortedAppointments.map((apt) => (
+                <div
+                  key={apt.id}
+                  onClick={() => handleAppointmentClick(apt)}
+                  className="bg-[#F6F8FC] rounded-lg p-4 cursor-pointer hover:bg-[#E2E8F0] transition-colors"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleAppointmentClick(apt);
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="text-[#102F63] font-bold text-lg">{formatTime(apt.scheduledAt)}</div>
+                      <div>
+                        <div className="font-medium text-[#1F2430]">{apt.patient.fullNameAr}</div>
+                        <div className="text-sm text-[#94A3B8]">{apt.patient.civilId}</div>
+                      </div>
+                    </div>
+                    {getStatusBadge(apt.status)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -9,7 +9,10 @@
     "reports": "التقارير",
     "settings": "الإعدادات",
     "menu": "القائمة",
-    "language": "اللغة"
+    "language": "اللغة",
+    "operations": "العمليات",
+    "billing": "الفوترة",
+    "administration": "الإدارة"
   },
   "common": {
     "close": "إغلاق",
@@ -40,6 +43,8 @@
     "back": "عودة",
     "clearFilters": "مسح الفلاتر",
     "showingRange": "عرض {{from}} إلى {{to}} من {{total}} {{item}}",
+    "today": "اليوم",
+    "appointments": "مواعيد",
     "openMenu": "فتح القائمة",
     "print": "طباعة",
     "showPassword": "إظهار كلمة المرور",
@@ -85,8 +90,11 @@
     "quickSummary": "ملخص سريع",
     "totalPatients": "إجمالي المرضى",
     "todayAppointments": "مواعيد اليوم",
+    "todayVisits": "زيارات اليوم",
     "weekVisits": "زيارات هذا الأسبوع",
-    "totalOutstanding": "إجمالي المستحقات"
+    "totalOutstanding": "إجمالي المستحقات",
+    "todayAgenda": "جدول اليوم",
+    "quickActions": "إجراءات سريعة"
   },
   "patients": {
     "subtitle": "إدارة بيانات المرضى والمريضات",
@@ -152,6 +160,7 @@
     "allTypes": "كل الأنواع",
     "loadError": "فشل في تحميل بيانات الزيارات",
     "time": "الوقت",
+    "date": "التاريخ",
     "patient": "المريضة",
     "type": "نوع الزيارة",
     "services": "الخدمات",
@@ -296,6 +305,7 @@
   },
   "appointments": {
     "loadError": "فشل في تحميل بيانات المواعيد",
+    "subtitle": "إدارة مواعيد العيادة وجدولة المواعيد",
     "statusBooked": "محجوز",
     "statusConfirmed": "مؤكد",
     "statusDone": "تم",

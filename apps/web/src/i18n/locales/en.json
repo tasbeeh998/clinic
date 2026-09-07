@@ -9,7 +9,10 @@
     "reports": "Reports",
     "settings": "Settings",
     "menu": "Menu",
-    "language": "Language"
+    "language": "Language",
+    "operations": "Operations",
+    "billing": "Billing",
+    "administration": "Administration"
   },
   "common": {
     "close": "Close",
@@ -40,6 +43,8 @@
     "back": "Back",
     "clearFilters": "Clear filters",
     "showingRange": "Showing {{from}} to {{to}} of {{total}} {{item}}",
+    "today": "Today",
+    "appointments": "appointments",
     "openMenu": "Open menu",
     "print": "Print",
     "showPassword": "Show password",
@@ -85,8 +90,11 @@
     "quickSummary": "Quick Summary",
     "totalPatients": "Total Patients",
     "todayAppointments": "Today's Appointments",
+    "todayVisits": "Today's Visits",
     "weekVisits": "Visits This Week",
-    "totalOutstanding": "Total Outstanding"
+    "totalOutstanding": "Total Outstanding",
+    "todayAgenda": "Today's Agenda",
+    "quickActions": "Quick Actions"
   },
   "patients": {
     "subtitle": "Manage patient records",
@@ -152,6 +160,7 @@
     "allTypes": "All types",
     "loadError": "Failed to load visit data",
     "time": "Time",
+    "date": "Date",
     "patient": "Patient",
     "type": "Visit Type",
     "services": "Services",
@@ -296,6 +305,7 @@
   },
   "appointments": {
     "loadError": "Failed to load appointment data",
+    "subtitle": "Manage clinic appointments and scheduling",
     "statusBooked": "Booked",
     "statusConfirmed": "Confirmed",
     "statusDone": "Done",

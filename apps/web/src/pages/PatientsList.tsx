@@ -5,6 +5,7 @@ import { Search, Eye, Pencil, CalendarPlus, Plus, Filter } from 'lucide-react';
 import { patientsService } from '../services/patients.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '../utils/dateFormat';
+import { useDebounce } from '../hooks/useDebounce';
 
 // Masks all but the first and last digit of a civil ID for display in the
 // list view only — the full number is still shown on the patient's own
@@ -19,14 +20,15 @@ export default function PatientsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [isArchived, setIsArchived] = useState<boolean | undefined>(undefined);
   const [showFilter, setShowFilter] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['patients', search, isArchived, page],
-    queryFn: () => patientsService.getPatients(search, isArchived, page, limit),
+    queryKey: ['patients', debouncedSearch, isArchived, page],
+    queryFn: () => patientsService.getPatients(debouncedSearch, isArchived, page, limit),
   });
 
   const handleSearch = (value: string) => {
@@ -45,43 +47,51 @@ export default function PatientsList() {
 
   return (
     <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-[26px] font-bold text-[#102F63]">{t('sidebar.patients')}</h1>
-          <p className="text-sm text-[#64748B] mt-1">{t('patients.subtitle')}</p>
+          <p className="text-sm text-[#64748B] mt-1">
+            {t('patients.subtitle')}
+            {meta && meta.total > 0 && (
+              <span className="font-medium text-[#102F63]"> · {meta.total} {t('patients.itemPlural')}</span>
+            )}
+          </p>
         </div>
-        <button onClick={() => navigate('/patients/new')} className="btn-primary flex items-center gap-2 px-4">
+        <button onClick={() => navigate('/patients/new')} className="btn-primary flex items-center gap-2 px-4 sm:w-auto w-full justify-center">
           <Plus size={18} strokeWidth={2} />
           {t('patients.addNew')}
         </button>
       </div>
 
-      <div className="flex items-center gap-3 mb-5">
-        <div className="relative flex-1 max-w-md">
-          <Search size={17} strokeWidth={1.75} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search size={17} strokeWidth={1.75} className="absolute end-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
           <input
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder={t('patients.searchPlaceholder')}
-            className="ui-input pr-10"
+            className="ui-input pe-10"
           />
         </div>
-        <div className="relative">
+        <div className="relative sm:static w-full sm:w-auto">
           <button
             onClick={() => setShowFilter((s) => !s)}
-            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC]"
+            className="h-11 px-4 flex items-center gap-2 rounded-[10px] border border-[#E2E8F0] bg-white text-sm text-[#102F63] hover:bg-[#F6F8FC] w-full sm:w-auto justify-start sm:justify-center"
           >
             <Filter size={16} strokeWidth={1.75} />
-            {t('common.filter')}
+            <span className="sm:hidden">
+              {isArchived === undefined ? t('common.all') : isArchived ? t('common.archived') : t('common.active')}
+            </span>
+            <span className="hidden sm:inline">{t('common.filter')}</span>
           </button>
           {showFilter && (
-            <div className="absolute left-0 mt-2 w-40 bg-white border border-[#E2E8F0] rounded-[10px] shadow-[var(--shadow-soft-lg)] z-10 overflow-hidden">
+            <div className="absolute start-0 mt-2 w-40 bg-white border border-[#E2E8F0] rounded-[10px] shadow-[var(--shadow-soft-lg)] z-10 overflow-hidden">
               {(['all', 'active', 'archived'] as const).map((opt) => (
                 <button
                   key={opt}
                   onClick={() => handleArchiveFilter(opt)}
-                  className={`w-full text-right px-4 py-2.5 text-sm hover:bg-[#F6F8FC] ${
+                  className={`w-full text-start px-4 py-2.5 text-sm hover:bg-[#F6F8FC] ${
                     (opt === 'all' && isArchived === undefined) ||
                     (opt === 'active' && isArchived === false) ||
                     (opt === 'archived' && isArchived === true)
@@ -116,91 +126,170 @@ export default function PatientsList() {
       )}
 
       {!isLoading && !error && patients.length > 0 && (
-        <div className="ui-card overflow-hidden p-0">
-          <table className="ui-table">
-            <thead>
-              <tr>
-                <th>{t('patients.name')}</th>
-                <th>{t('patients.civilId')}</th>
-                <th>{t('patients.phone')}</th>
-                <th>{t('patients.lastVisit')}</th>
-                <th>{t('patients.nextVisit')}</th>
-                <th>{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patients.map((patient) => (
-                <tr key={patient.id}>
-                  <td>
+        <>
+          {/* Desktop Table View */}
+          <div className="ui-card overflow-hidden p-0 hidden md:block">
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th>{t('patients.name')}</th>
+                  <th>{t('patients.civilId')}</th>
+                  <th>{t('patients.phone')}</th>
+                  <th>{t('patients.lastVisit')}</th>
+                  <th>{t('patients.nextVisit')}</th>
+                  <th>{t('common.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {patients.map((patient) => (
+                  <tr key={patient.id}>
+                    <td>
+                      <div className="font-medium text-[#1F2430]">{patient.fullNameAr}</div>
+                      {patient.fullNameEn && <div className="text-xs text-[#94A3B8]">{patient.fullNameEn}</div>}
+                    </td>
+                    <td className="font-mono text-[#64748B]">{maskCivilId(patient.civilId)}</td>
+                    <td className="text-[#1F2430]">{patient.phone || '—'}</td>
+                    <td className="text-[#64748B]">{formatDate(patient.lastVisitDate, i18n.language)}</td>
+                    <td className="text-[#64748B]">{formatDate(patient.nextAppointmentDate, i18n.language)}</td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => navigate(`/patients/${patient.id}`)}
+                          aria-label={t('patients.viewPatient')}
+                          className="icon-btn"
+                        >
+                          <Eye size={16} strokeWidth={1.75} />
+                        </button>
+                        <button
+                          onClick={() => navigate(`/patients/${patient.id}/edit`)}
+                          aria-label={t('patients.editPatient')}
+                          className="icon-btn"
+                        >
+                          <Pencil size={16} strokeWidth={1.75} />
+                        </button>
+                        <button
+                          onClick={() => navigate('/appointments/new')}
+                          aria-label={t('patients.bookAppointment')}
+                          className="icon-btn"
+                        >
+                          <CalendarPlus size={16} strokeWidth={1.75} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {meta && (
+              <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
+                <span className="text-[13px] text-[#64748B]">
+                  {t('common.showingRange', {
+                    from: (meta.page - 1) * meta.limit + 1,
+                    to: Math.min(meta.page * meta.limit, meta.total),
+                    total: meta.total,
+                    item: t('patients.itemPlural'),
+                  })}
+                </span>
+                {meta.totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
+                    >
+                      {t('common.previous')}
+                    </button>
+                    <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
+                    <button
+                      onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                      disabled={page === meta.totalPages}
+                      className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
+                    >
+                      {t('common.next')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {patients.map((patient) => (
+              <div key={patient.id} className="ui-card p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
                     <div className="font-medium text-[#1F2430]">{patient.fullNameAr}</div>
                     {patient.fullNameEn && <div className="text-xs text-[#94A3B8]">{patient.fullNameEn}</div>}
-                  </td>
-                  <td className="font-mono text-[#64748B]">{maskCivilId(patient.civilId)}</td>
-                  <td className="text-[#1F2430]">{patient.phone || '—'}</td>
-                  <td className="text-[#64748B]">{formatDate(patient.lastVisitDate, i18n.language)}</td>
-                  <td className="text-[#64748B]">{formatDate(patient.nextAppointmentDate, i18n.language)}</td>
-                  <td>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate(`/patients/${patient.id}`)}
-                        aria-label={t('patients.viewPatient')}
-                        className="icon-btn"
-                      >
-                        <Eye size={16} strokeWidth={1.75} />
-                      </button>
-                      <button
-                        onClick={() => navigate(`/patients/${patient.id}/edit`)}
-                        aria-label={t('patients.editPatient')}
-                        className="icon-btn"
-                      >
-                        <Pencil size={16} strokeWidth={1.75} />
-                      </button>
-                      <button
-                        onClick={() => navigate('/appointments/new')}
-                        aria-label={t('patients.bookAppointment')}
-                        className="icon-btn"
-                      >
-                        <CalendarPlus size={16} strokeWidth={1.75} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {meta && (
-            <div className="flex items-center justify-between px-5 py-4 border-t border-[#E2E8F0]">
-              <span className="text-[13px] text-[#64748B]">
-                {t('common.showingRange', {
-                  from: (meta.page - 1) * meta.limit + 1,
-                  to: Math.min(meta.page * meta.limit, meta.total),
-                  total: meta.total,
-                  item: t('patients.itemPlural'),
-                })}
-              </span>
-              {meta.totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
-                  >
-                    {t('common.previous')}
-                  </button>
-                  <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
-                  <button
-                    onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-                    disabled={page === meta.totalPages}
-                    className="px-3 py-1.5 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
-                  >
-                    {t('common.next')}
-                  </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/patients/${patient.id}`)}
+                      aria-label={t('patients.viewPatient')}
+                      className="icon-btn"
+                    >
+                      <Eye size={16} strokeWidth={1.75} />
+                    </button>
+                    <button
+                      onClick={() => navigate(`/patients/${patient.id}/edit`)}
+                      aria-label={t('patients.editPatient')}
+                      className="icon-btn"
+                    >
+                      <Pencil size={16} strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </div>
-              )}
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('patients.civilId')}</span>
+                    <span className="font-mono text-[#64748B]">{maskCivilId(patient.civilId)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('patients.phone')}</span>
+                    <span className="text-[#1F2430]">{patient.phone || '—'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('patients.lastVisit')}</span>
+                    <span className="text-[#64748B]">{formatDate(patient.lastVisitDate, i18n.language)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">{t('patients.nextVisit')}</span>
+                    <span className="text-[#64748B]">{formatDate(patient.nextAppointmentDate, i18n.language)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/appointments/new')}
+                  className="w-full mt-3 btn-primary flex items-center justify-center gap-2 py-2"
+                >
+                  <CalendarPlus size={16} strokeWidth={2} />
+                  {t('patients.bookAppointment')}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Mobile Pagination */}
+          {meta && meta.totalPages > 1 && (
+            <div className="md:hidden flex items-center justify-center gap-3 mt-4">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
+              >
+                {t('common.previous')}
+              </button>
+              <span className="text-sm text-[#102F63] font-medium">{meta.page} / {meta.totalPages}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                disabled={page === meta.totalPages}
+                className="px-4 py-2 rounded-md border border-[#E2E8F0] text-sm disabled:opacity-40"
+              >
+                {t('common.next')}
+              </button>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
