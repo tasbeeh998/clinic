@@ -32,6 +32,8 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-clinic_user}:${POSTGRES_PASSWORD:-clinic_password}@postgres:5432/${POSTGRES_DB:-clinic_db}
       FRONTEND_URL: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       POSTGRES_USER: ${POSTGRES_USER:-clinic_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic_password}
       POSTGRES_DB: ${POSTGRES_DB:-clinic_db}

@@ -44,41 +44,114 @@ export interface InvoicePdfData {
   }>;
 }
 
-// Fixed clinic identity — single-doctor clinic, this never changes per invoice.
-const DOCTOR_NAME_AR = 'د. نداء "محمد" خضور';
-const DOCTOR_TITLE_AR = 'استشاري أمراض النساء والولادة والعقم';
+// Locale is driven entirely by the frontend. The backend has no concept of the
+// active react-i18next language on its own, so whatever page/button triggers the
+// PDF (download or "send via WhatsApp") MUST pass the current i18n.language along
+// with the request, e.g.:
+//   GET /invoices/:id/pdf?lang=ar
+//   GET /invoices/:id/pdf?lang=en
+// and the controller/service should forward it here as `locale`.
+export type InvoiceLocale = 'ar' | 'en';
 
-const CLINIC_NAME_AR = 'مركز العيادات التخصصية';
-const CLINIC_NAME_EN = 'Specialized Clinics Center';
-
-const CLINIC_ADDRESS_AR = 'حولي - قطعة 4 - شارع المعتصم - مركز العيادات التخصصية - الدور السادس';
-const CLINIC_ADDRESS_EN = "Hawally - Block 4 - Al-Mu'tasim Street - Specialized Clinics Center - 6th Floor";
-const CLINIC_PHONE_AR = 'تلفون: 22650700 داخلي 607';
-const CLINIC_PHONE_EN = 'Tel.: 22650700 Ext. 607';
-const CLINIC_MOBILE_AR = 'موبايل وواتساب: 60008977';
-const CLINIC_MOBILE_EN = 'Mobile & WhatsApp: 60008977';
-
-const VISIT_TYPE_LABELS_EN: Record<'CHECKUP' | 'FOLLOW_UP' | 'OTHER', string> = {
-  CHECKUP: 'Checkup',
-  FOLLOW_UP: 'Follow-up',
-  OTHER: 'Other',
+// ── Fixed clinic identity — single-doctor clinic, never changes per invoice ──
+// The doctor's name/title and the address/contact block are ALWAYS shown in
+// Arabic, even on the English invoice — this is a deliberate choice (not a
+// bug): only the section labels (Invoice No., Patient Information, ...) and
+// the values pulled from the invoice itself switch language. See
+// DOCTOR_FIXED / CONTACT_FIXED below, which are read regardless of `locale`.
+const FIXED: Record<InvoiceLocale, {
+  clinicNameLine1: string;
+  clinicNameLine2: string;
+}> = {
+  ar: {
+    clinicNameLine1: 'مركز العيادات التخصصية',
+    clinicNameLine2: 'Specialized Clinics Center',
+  },
+  en: {
+    clinicNameLine1: 'Specialized Clinics Center',
+    clinicNameLine2: 'مركز العيادات التخصصية',
+  },
 };
 
-const PAYMENT_STATUS_LABELS_EN: Record<InvoicePdfData['paymentStatus'], string> = {
-  UNPAID: 'UNPAID',
-  PARTIALLY_PAID: 'PARTIALLY PAID',
-  PAID: 'PAID',
+// Always Arabic, regardless of invoice locale.
+const DOCTOR_FIXED = {
+  doctorName: 'د. نداء بوخضور',
+  doctorTitle: 'استشاري أمراض النساء والولادة والعقم',
 };
 
-const PAYMENT_METHOD_LABELS_EN: Record<InvoicePdfData['payments'][number]['method'], string> = {
-  CASH: 'CASH',
-  VISA: 'VISA',
-  KNET: 'KNET',
-  OTHER: 'OTHER',
+// Always Arabic, regardless of invoice locale.
+const CONTACT_FIXED = {
+  address: 'حولي - قطعة 4 - شارع المعتصم - مركز العيادات التخصصية - الدور السادس',
+  phone: 'تلفون: 22650700 داخلي 607',
+  mobile: 'موبايل وواتساب: 60008977',
 };
+
+// ── UI copy per locale ──
+const T = {
+  ar: {
+    invoiceTitle: 'فاتورة',
+    invoiceNo: 'رقم الفاتورة',
+    date: 'التاريخ',
+    patientInfoTitle: 'بيانات المريضة',
+    patientName: 'اسم المريضة',
+    visitType: 'نوع الزيارة',
+    civilId: 'الرقم المدني',
+    diagnosis: 'التشخيص',
+    mobileNumber: 'رقم الموبايل',
+    doctor: 'الطبيبة',
+    service: 'الخدمة',
+    code: 'الكود',
+    qty: 'الكمية',
+    unitPrice: 'سعر الوحدة (د.ك)',
+    total: 'الإجمالي (د.ك)',
+    subtotal: 'المجموع الفرعي',
+    paid: 'المدفوع',
+    remaining: 'المتبقي',
+    paymentStatus: 'حالة الدفع',
+    paymentMethod: 'طريقة الدفع',
+    thanks: '♥ شكرًا لاختياركم عيادتنا ♥',
+    replacementNote: 'تم استبدال هذه الفاتورة. راجع الفاتورة البديلة للتفاصيل الحالية.',
+    visitTypeLabels: { CHECKUP: 'كشف', FOLLOW_UP: 'متابعة', OTHER: 'أخرى' },
+    paymentStatusLabels: { UNPAID: 'غير مدفوعة', PARTIALLY_PAID: 'مدفوعة جزئيًا', PAID: 'مدفوعة بالكامل' },
+    paymentMethodLabels: { CASH: 'نقدًا', VISA: 'فيزا', KNET: 'كي نت', OTHER: 'أخرى' },
+    additionalCharge: 'رسوم إضافية',
+    fixedCharge: 'رسوم ثابتة',
+    dash: '—',
+  },
+  en: {
+    invoiceTitle: 'INVOICE',
+    invoiceNo: 'Invoice No.',
+    date: 'Date',
+    patientInfoTitle: 'PATIENT INFORMATION',
+    patientName: 'Patient Name',
+    visitType: 'Visit Type',
+    civilId: 'Civil ID',
+    diagnosis: 'Diagnosis',
+    mobileNumber: 'Mobile Number',
+    doctor: 'Doctor',
+    service: 'SERVICE',
+    code: 'CODE',
+    qty: 'QTY',
+    unitPrice: 'UNIT PRICE (KD)',
+    total: 'TOTAL (KD)',
+    subtotal: 'Subtotal',
+    paid: 'Paid',
+    remaining: 'Remaining',
+    paymentStatus: 'PAYMENT STATUS',
+    paymentMethod: 'PAYMENT METHOD',
+    thanks: '♥ Thank you for choosing our clinic ♥',
+    replacementNote: 'This invoice has been replaced. See replacement invoice for current details.',
+    visitTypeLabels: { CHECKUP: 'Checkup', FOLLOW_UP: 'Follow-up', OTHER: 'Other' },
+    paymentStatusLabels: { UNPAID: 'UNPAID', PARTIALLY_PAID: 'PARTIALLY PAID', PAID: 'PAID' },
+    paymentMethodLabels: { CASH: 'CASH', VISA: 'VISA', KNET: 'KNET', OTHER: 'OTHER' },
+    additionalCharge: 'Additional Charge',
+    fixedCharge: 'Fixed Charge',
+    dash: '—',
+  },
+} as const;
 
 function formatMoney(value: number | string): string {
-  // Matches the approved mockup exactly (2 decimals), even though KWD is
+  // Matches the approved design exactly (2 decimals), even though KWD is
   // normally quoted to 3 — an explicit, deliberate choice for this invoice.
   return Number(value).toFixed(2);
 }
@@ -99,13 +172,34 @@ function escapeHtml(input: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function renderInvoiceHtml(invoice: InvoicePdfData): string {
+// Icon SVGs — more reliable than Unicode emojis for PDF rendering
+function icon(name: string, size: number = 16): string {
+  const svgs: Record<string, string> = {
+    document: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`,
+    calendar: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`,
+    user: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`,
+    clipboard: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>`,
+    card: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>`,
+    heart: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`,
+    phone: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`,
+    stethoscope: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.3.3 0 1 0 0 .6h1a1.4 1.4 0 0 1 1.4 1.4v5a5.4 5.4 0 0 1-5.4 5.4v0A5.4 5.4 0 0 1 2.6 9V4a1.4 1.4 0 0 1 1.4-1.4h1a.3.3 0 1 0 0-.6z"></path><path d="M11 12v4a2 2 0 0 0 2 2v0a2 2 0 0 0 2-2v-4"></path></svg>`,
+    wallet: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h4v-4h-4z"></path></svg>`,
+  };
+  return svgs[name] || '';
+}
+
+export function renderInvoiceHtml(invoice: InvoicePdfData, locale: InvoiceLocale = 'en'): string {
+  const isRtl = locale === 'ar';
+  const dir = isRtl ? 'rtl' : 'ltr';
+  const t = T[locale];
+  const fixed = FIXED[locale];
+
   const itemsRows = invoice.invoiceItems
     .map(
       (item) => `
         <tr>
           <td class="col-service">${escapeHtml(item.serviceNameSnapshot)}</td>
-          <td class="col-code">${item.service?.code ? escapeHtml(item.service.code) : '&mdash;'}</td>
+          <td class="col-code">${item.service?.code ? escapeHtml(item.service.code) : t.dash}</td>
           <td class="col-qty">${item.quantity}</td>
           <td class="col-price">${formatMoney(item.unitPriceSnapshot)}</td>
           <td class="col-total">${formatMoney(item.lineTotal)}</td>
@@ -113,75 +207,71 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     )
     .join('');
 
-  // Generate additional charges rows if they exist
   const chargesRows = (invoice.additionalCharges || [])
-    .map(
-      (charge) => {
-        const chargeLabel = charge.description ? escapeHtml(charge.description) : (charge.chargeType === 'PERCENTAGE' ? 'Additional Charge' : 'Fixed Charge');
-        const priceDisplay = charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
-        return `
+    .map((charge) => {
+      const chargeLabel = charge.description
+        ? escapeHtml(charge.description)
+        : charge.chargeType === 'PERCENTAGE'
+          ? t.additionalCharge
+          : t.fixedCharge;
+      const priceDisplay =
+        charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
+      return `
         <tr class="charge-row">
           <td class="col-service">${chargeLabel}</td>
-          <td class="col-code">&mdash;</td>
+          <td class="col-code">${t.dash}</td>
           <td class="col-qty">1</td>
           <td class="col-price">${priceDisplay}</td>
           <td class="col-total">${formatMoney(charge.calculatedAmount)}</td>
         </tr>`;
-      }
-    )
+    })
     .join('');
 
-  // Generate additional charges totals rows
   const chargesTotalsRows = (invoice.additionalCharges || [])
-    .map(
-      (charge) => {
-        const chargeLabel = charge.description || (charge.chargeType === 'PERCENTAGE' ? 'Additional Charge' : 'Fixed Charge');
-        const valueDisplay = charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
-        return `<div class="row"><span>${chargeLabel} (${valueDisplay})</span><span class="value">${formatMoney(charge.calculatedAmount)} KD</span></div>`;
-      }
-    )
+    .map((charge) => {
+      const chargeLabel =
+        charge.description || (charge.chargeType === 'PERCENTAGE' ? t.additionalCharge : t.fixedCharge);
+      const valueDisplay =
+        charge.chargeType === 'PERCENTAGE' ? formatMoney(charge.chargeValue) + '%' : formatMoney(charge.chargeValue);
+      return `<div class="row"><span>${escapeHtml(chargeLabel)} (${valueDisplay})</span><span class="value">${formatMoney(charge.calculatedAmount)} KD</span></div>`;
+    })
     .join('');
 
   const lastPayment = invoice.payments.length > 0 ? invoice.payments[invoice.payments.length - 1] : null;
 
-  const voidWatermark =
-    invoice.status === 'VOID'
-      ? `<div class="watermark">VOID</div>`
-      : '';
+  const voidWatermark = invoice.status === 'VOID' ? `<div class="watermark">VOID</div>` : '';
 
   const replacementNote = invoice.replacedByInvoiceId
-    ? `<div class="replacement-note">This invoice has been replaced. See replacement invoice for current details.</div>`
+    ? `<div class="replacement-note">${t.replacementNote}</div>`
     : '';
 
-  const visitTypeLabel = invoice.visit ? VISIT_TYPE_LABELS_EN[invoice.visit.type] : '&mdash;';
-  const diagnosis = invoice.visit?.diagnosis ? escapeHtml(invoice.visit.diagnosis) : '&mdash;';
+  const visitTypeLabel = invoice.visit ? t.visitTypeLabels[invoice.visit.type] : t.dash;
+  const diagnosis = invoice.visit?.diagnosis ? escapeHtml(invoice.visit.diagnosis) : t.dash;
 
   return `
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="${locale}" dir="${dir}">
 <head>
 <meta charset="UTF-8" />
 <style>
-  @font-face {
-    font-family: 'Noto Naskh Arabic';
-    src: local('Noto Naskh Arabic');
-  }
   * { box-sizing: border-box; }
   body {
-    font-family: 'Arial', 'Noto Sans Arabic', 'Noto Naskh Arabic', sans-serif;
+    font-family: ${isRtl ? "'Noto Naskh Arabic', 'Noto Sans Arabic', Arial, sans-serif" : "Arial, 'Noto Sans Arabic', sans-serif"};
     color: #1F2430;
     margin: 0;
     padding: 0;
     background: #FFFFFF;
     position: relative;
   }
+  .ico { display: inline-block; vertical-align: middle; flex-shrink: 0; }
   .page {
-    padding: 32px 40px 40px;
+    padding: 20px 30px 20px;
     border: 1px solid #111844;
-    margin: 16px;
+    margin: 4px;
+    position: relative;
   }
   .watermark {
-    position: fixed;
+    position: absolute;
     top: 40%;
     left: 0;
     right: 0;
@@ -192,248 +282,128 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     opacity: 0.15;
     transform: rotate(-25deg);
     z-index: 10;
+    pointer-events: none;
   }
-  .top-bar {
-    height: 6px;
-    background: #111844;
-    margin: -32px -40px 24px;
-  }
+  .top-bar { height: 4px; background: #111844; margin: -20px -30px 10px; }
   .header {
     display: flex;
     align-items: center;
-    gap: 20px;
-    padding-bottom: 16px;
-    border-bottom: 3px double #111844;
-    margin-bottom: 16px;
-  }
-  .header .logo {
-    width: 80px;
-    height: 80px;
-    flex-shrink: 0;
-  }
-  .header .clinic-name-ar {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 24px;
-    font-weight: bold;
-    color: #111844;
-    direction: rtl;
-  }
-  .header .clinic-name-en {
-    font-size: 22px;
-    font-weight: bold;
-    color: #111844;
-  }
-  .doctor-block {
+    justify-content: center;
+    gap: 12px;
     text-align: center;
-    margin-bottom: 18px;
+    padding-bottom: 7px;
+    border-bottom: 3px double #111844;
+    margin-bottom: 7px;
   }
-  .doctor-block .doctor-name {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
+  .header .logo { width: 60px; height: 60px; flex-shrink: 0; }
+  .header .clinic-name-primary {
+    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', 'Arial', sans-serif;
     font-size: 16px;
     font-weight: bold;
+    color: #111844;
+  }
+  .header .clinic-name-secondary { font-size: 11px; color: #4B5694; margin-top: 1px; }
+  .doctor-block { text-align: center; margin-bottom: 7px; }
+  .doctor-block .doctor-name {
+    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', 'Arial', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
     color: #1F2430;
-    direction: rtl;
   }
   .doctor-block .doctor-title {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    font-size: 13px;
+    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', 'Arial', sans-serif;
+    font-size: 10px;
     color: #4B5694;
-    direction: rtl;
-    margin-top: 2px;
+    margin-top: 1px;
   }
   .invoice-title {
     text-align: center;
-    font-size: 26px;
+    font-size: 16px;
     font-weight: bold;
     color: #111844;
     letter-spacing: 2px;
-    margin: 18px 0 20px;
+    margin: 7px 0 8px;
   }
-  .invoice-title .arrow {
-    color: #4B5694;
-    font-weight: normal;
-    padding: 0 10px;
-  }
+  .invoice-title .arrow { color: #4B5694; font-weight: normal; padding: 0 10px; }
   .meta-box {
     display: flex;
     border: 1px solid #111844;
     border-radius: 8px;
-    margin-bottom: 18px;
+    margin-bottom: 8px;
     overflow: hidden;
   }
-  .meta-box .cell {
-    flex: 1;
-    padding: 10px 16px;
+  .meta-box .cell { flex: 1; padding: 5px 12px; display: flex; align-items: center; gap: 7px; }
+  .meta-box .cell:first-child { border-inline-end: 1px solid #E5E7EF; }
+  .meta-box .cell .ico { color: #111844; }
+  .meta-box .cell .label { font-size: 10px; color: #8991A6; display: block; }
+  .meta-box .cell .value { font-size: 12px; font-weight: bold; color: #111844; }
+  .patient-box { position: relative; border: 1px solid #111844; border-radius: 8px; padding: 11px 14px 9px; margin-bottom: 8px; }
+  .patient-box .connector {
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #EAF0FB;
+    border: 1px solid #111844;
     display: flex;
     align-items: center;
-    gap: 8px;
-  }
-  .meta-box .cell:first-child {
-    border-right: 1px solid #E5E7EF;
-  }
-  .meta-box .cell .icon {
+    justify-content: center;
     color: #111844;
-    font-size: 16px;
-  }
-  .meta-box .cell .label {
-    font-size: 11px;
-    color: #8991A6;
-    display: block;
-  }
-  .meta-box .cell .value {
-    font-size: 14px;
-    font-weight: bold;
-    color: #111844;
-  }
-  .patient-box {
-    border: 1px solid #111844;
-    border-radius: 8px;
-    padding: 16px 20px;
-    margin-bottom: 18px;
   }
   .patient-box .patient-title {
     text-align: center;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: bold;
     color: #111844;
     letter-spacing: 1px;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
+    margin-bottom: 7px;
+    padding-bottom: 5px;
     border-bottom: 1px solid #E5E7EF;
   }
-  .patient-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 24px;
-  }
-  .patient-grid .field .label {
-    font-size: 11px;
-    color: #8991A6;
-    margin-bottom: 2px;
-  }
-  .patient-grid .field .value {
-    font-size: 14px;
-    font-weight: bold;
-    color: #1F2430;
-  }
-  .patient-grid .field .value.ar {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    direction: rtl;
-    text-align: right;
-  }
-  table.items {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 16px;
-  }
-  table.items th {
-    background: #111844;
-    color: #FFFFFF;
-    padding: 9px 10px;
-    font-size: 12px;
-    text-align: left;
-  }
-  table.items td {
-    padding: 9px 10px;
-    font-size: 13px;
-    border-bottom: 1px solid #E5E7EF;
-  }
+  .patient-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  .patient-grid .field { display: flex; align-items: flex-start; gap: 7px; }
+  .patient-grid .field .ico { color: #111844; margin-top: 1px; }
+  .patient-grid .field .label { font-size: 10px; color: #8991A6; margin-bottom: 1px; }
+  .patient-grid .field .value { font-size: 12px; font-weight: bold; color: #1F2430; }
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  table.items th { background: #111844; color: #FFFFFF; padding: 5px 8px; font-size: 12px; text-align: ${isRtl ? 'right' : 'left'}; }
+  table.items td { padding: 5px 8px; font-size: 12px; border-bottom: 1px solid #E5E7EF; }
   table.items tr:nth-child(even) td { background: #F6F7FA; }
   table.items tr.charge-row td { background: #FFF3E0; font-style: italic; }
   .col-qty, .col-price, .col-total, .col-code { text-align: center; }
-  table.items th.col-qty, table.items th.col-price, table.items th.col-total, table.items th.col-code {
-    text-align: center;
-  }
+  table.items th.col-qty, table.items th.col-price, table.items th.col-total, table.items th.col-code { text-align: center; }
   .replacement-note {
-    text-align: center;
-    font-size: 12px;
-    color: #C4362B;
-    font-weight: bold;
-    margin-bottom: 12px;
-    padding: 8px;
-    border: 1px solid #C4362B;
-    border-radius: 4px;
-    background: #FEF2F2;
+    text-align: center; font-size: 11px; color: #C4362B; font-weight: bold;
+    margin-bottom: 10px; padding: 6px; border: 1px solid #C4362B; border-radius: 4px; background: #FEF2F2;
   }
-  .bottom-row {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 18px;
-  }
+  .bottom-row { display: flex; gap: 12px; margin-bottom: 8px; page-break-inside: avoid; }
   .totals-box {
-    flex: 1;
-    border: 1px solid #111844;
-    border-radius: 8px;
-    padding: 14px 18px;
+    flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 7px 12px;
+    display: flex; align-items: center; gap: 10px;
   }
-  .totals-box .row {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 14px;
-    color: #1F2430;
+  .totals-box .totals-icon {
+    width: 26px; height: 26px; border-radius: 50%; background: #EAF0FB; color: #111844;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
+  .totals-box .totals-rows { flex: 1; }
+  .totals-box .row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 11px; color: #1F2430; }
   .totals-box .row.remaining .value { color: #C4362B; font-weight: bold; }
   .totals-box .row .value { font-weight: bold; }
-  .status-row {
-    display: flex;
-    gap: 12px;
+  .status-row { display: flex; gap: 8px; flex: 1; }
+  .status-box { flex: 1; border: 1px solid #111844; border-radius: 8px; padding: 7px 8px; text-align: center; }
+  .status-box .label { font-size: 10px; color: #8991A6; margin-bottom: 3px; letter-spacing: 0.5px; }
+  .status-box .value { font-size: 12px; font-weight: bold; color: #111844; }
+  .thanks { text-align: center; font-style: italic; font-size: 11px; color: #4B5694; margin-bottom: 7px; }
+  .footer-box { border: 1px solid #111844; border-radius: 8px; padding: 7px 14px; text-align: center; font-size: 10px; color: #4B5694; page-break-inside: avoid; }
+  .footer-box .clinic-name-primary {
+    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', 'Arial', sans-serif;
+    font-size: 11px; font-weight: bold; color: #111844; margin-bottom: 1px;
   }
-  .status-box {
-    flex: 1;
-    border: 1px solid #111844;
-    border-radius: 8px;
-    padding: 14px 12px;
-    text-align: center;
-  }
-  .status-box .label {
-    font-size: 11px;
-    color: #8991A6;
-    margin-bottom: 6px;
-    letter-spacing: 0.5px;
-  }
-  .status-box .value {
-    font-size: 15px;
-    font-weight: bold;
-    color: #111844;
-  }
-  .thanks {
-    text-align: center;
-    font-style: italic;
-    font-size: 13px;
-    color: #4B5694;
-    margin-bottom: 18px;
-  }
-  .footer-box {
-    border: 1px solid #111844;
-    border-radius: 8px;
-    padding: 14px 20px;
-    text-align: center;
-    font-size: 11px;
-    color: #4B5694;
-  }
-  .footer-box .clinic-name-ar {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    direction: rtl;
-    font-size: 14px;
-    font-weight: bold;
-    color: #111844;
-    margin-bottom: 2px;
-  }
-  .footer-box .clinic-name-en {
-    font-size: 13px;
-    font-weight: bold;
-    color: #111844;
-    margin-bottom: 8px;
-  }
-  .footer-box .line-ar {
-    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', sans-serif;
-    direction: rtl;
-    margin-bottom: 1px;
-  }
-  .footer-box .line-en {
-    margin-bottom: 6px;
-  }
+  .footer-box .clinic-name-secondary { font-size: 10px; font-weight: bold; color: #111844; margin-bottom: 4px; }
+  .footer-box .line { margin-bottom: 1px; }
 </style>
 </head>
 <body>
@@ -442,63 +412,60 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     <div class="top-bar"></div>
 
     <div class="header">
-      <img class="logo" src="data:image/png;base64,${CLINIC_LOGO_BASE64}" alt="Specialized Clinics Center" />
+      <img class="logo" src="data:image/png;base64,${CLINIC_LOGO_BASE64}" alt="${fixed.clinicNameLine1}" />
       <div>
-        <div class="clinic-name-ar">${CLINIC_NAME_AR}</div>
-        <div class="clinic-name-en">${CLINIC_NAME_EN}</div>
+        <div class="clinic-name-primary">${fixed.clinicNameLine1}</div>
+        <div class="clinic-name-secondary">${fixed.clinicNameLine2}</div>
       </div>
     </div>
 
+    <!-- Doctor name/title are always Arabic, regardless of invoice locale. -->
     <div class="doctor-block">
-      <div class="doctor-name">${DOCTOR_NAME_AR}</div>
-      <div class="doctor-title">${DOCTOR_TITLE_AR}</div>
+      <div class="doctor-name">${DOCTOR_FIXED.doctorName}</div>
+      <div class="doctor-title">${DOCTOR_FIXED.doctorTitle}</div>
     </div>
 
-    <div class="invoice-title"><span class="arrow">&#8594;</span>INVOICE<span class="arrow">&#8592;</span></div>
+    <div class="invoice-title"><span class="arrow">${isRtl ? '&#8592;' : '&#8594;'}</span>${t.invoiceTitle}<span class="arrow">${isRtl ? '&#8594;' : '&#8592;'}</span></div>
 
     <div class="meta-box">
       <div class="cell">
-        <span class="icon">&#128196;</span>
-        <div>
-          <span class="label">Invoice No.</span>
-          <span class="value">${escapeHtml(invoice.invoiceNumber)}</span>
-        </div>
+        ${icon('document')}
+        <div><span class="label">${t.invoiceNo}</span><span class="value">${escapeHtml(invoice.invoiceNumber)}</span></div>
       </div>
       <div class="cell">
-        <span class="icon">&#128197;</span>
-        <div>
-          <span class="label">Date</span>
-          <span class="value">${formatDate(invoice.issuedAt || invoice.createdAt)}</span>
-        </div>
+        ${icon('calendar')}
+        <div><span class="label">${t.date}</span><span class="value">${formatDate(invoice.issuedAt || invoice.createdAt)}</span></div>
       </div>
     </div>
 
     <div class="patient-box">
-      <div class="patient-title">PATIENT INFORMATION</div>
+      <div class="connector">${icon('user', 16)}</div>
+      <div class="patient-title">${t.patientInfoTitle}</div>
       <div class="patient-grid">
         <div class="field">
-          <div class="label">Patient Name</div>
-          <div class="value ar">${escapeHtml(invoice.patient.fullNameAr)}</div>
+          ${icon('user')}
+          <div><div class="label">${t.patientName}</div><div class="value">${escapeHtml(invoice.patient.fullNameAr)}</div></div>
         </div>
         <div class="field">
-          <div class="label">Visit Type</div>
-          <div class="value">${visitTypeLabel}</div>
+          ${icon('clipboard')}
+          <div><div class="label">${t.visitType}</div><div class="value">${visitTypeLabel}</div></div>
         </div>
         <div class="field">
-          <div class="label">Civil ID</div>
-          <div class="value">${escapeHtml(invoice.patient.civilId)}</div>
+          ${icon('card')}
+          <div><div class="label">${t.civilId}</div><div class="value">${escapeHtml(invoice.patient.civilId)}</div></div>
         </div>
         <div class="field">
-          <div class="label">Diagnosis</div>
-          <div class="value ar">${diagnosis}</div>
+          ${icon('heart')}
+          <div><div class="label">${t.diagnosis}</div><div class="value">${diagnosis}</div></div>
         </div>
         <div class="field">
-          <div class="label">Mobile Number</div>
-          <div class="value">${invoice.patient.phone ? escapeHtml(invoice.patient.phone) : '&mdash;'}</div>
+          ${icon('phone')}
+          <div><div class="label">${t.mobileNumber}</div><div class="value">${invoice.patient.phone ? escapeHtml(invoice.patient.phone) : t.dash}</div></div>
         </div>
         <div class="field">
-          <div class="label">Doctor</div>
-          <div class="value ar">${DOCTOR_NAME_AR}</div>
+          ${icon('stethoscope')}
+          <!-- Doctor name is always Arabic here too, regardless of invoice locale. -->
+          <div><div class="label">${t.doctor}</div><div class="value">${DOCTOR_FIXED.doctorName}</div></div>
         </div>
       </div>
     </div>
@@ -506,11 +473,11 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
     <table class="items">
       <thead>
         <tr>
-          <th class="col-service">SERVICE</th>
-          <th class="col-code">CODE</th>
-          <th class="col-qty">QTY</th>
-          <th class="col-price">UNIT PRICE (KD)</th>
-          <th class="col-total">TOTAL (KD)</th>
+          <th class="col-service">${t.service}</th>
+          <th class="col-code">${t.code}</th>
+          <th class="col-qty">${t.qty}</th>
+          <th class="col-price">${t.unitPrice}</th>
+          <th class="col-total">${t.total}</th>
         </tr>
       </thead>
       <tbody>
@@ -523,37 +490,55 @@ export function renderInvoiceHtml(invoice: InvoicePdfData): string {
 
     <div class="bottom-row">
       <div class="totals-box">
-        <div class="row"><span>Subtotal</span><span class="value">${formatMoney(invoice.subtotal)} KD</span></div>
-        ${chargesTotalsRows}
-        <div class="row" style="border-top: 1px solid #E5E7EF; padding-top: 8px; margin-top: 4px;"><span>Total</span><span class="value">${formatMoney(invoice.total)} KD</span></div>
-        <div class="row"><span>Paid</span><span class="value">${formatMoney(invoice.paid)} KD</span></div>
-        <div class="row remaining"><span>Remaining</span><span class="value">${formatMoney(invoice.remaining)} KD</span></div>
+        <div class="totals-icon">${icon('wallet', 16)}</div>
+        <div class="totals-rows">
+          <div class="row"><span>${t.subtotal}</span><span class="value">${formatMoney(invoice.subtotal)} KD</span></div>
+          ${chargesTotalsRows}
+          <div class="row" style="border-top: 1px solid #E5E7EF; padding-top: 6px; margin-top: 4px;"><span>${t.total}</span><span class="value">${formatMoney(invoice.total)} KD</span></div>
+          <div class="row"><span>${t.paid}</span><span class="value">${formatMoney(invoice.paid)} KD</span></div>
+          <div class="row remaining"><span>${t.remaining}</span><span class="value">${formatMoney(invoice.remaining)} KD</span></div>
+        </div>
       </div>
-      <div class="status-row" style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+      <div class="status-row">
         <div class="status-box">
-          <div class="label">PAYMENT STATUS</div>
-          <div class="value">${PAYMENT_STATUS_LABELS_EN[invoice.paymentStatus]}</div>
+          <div class="label">${t.paymentStatus}</div>
+          <div class="value">${t.paymentStatusLabels[invoice.paymentStatus]}</div>
         </div>
         <div class="status-box">
-          <div class="label">PAYMENT METHOD</div>
-          <div class="value">${lastPayment ? PAYMENT_METHOD_LABELS_EN[lastPayment.method] : '&mdash;'}</div>
+          <div class="label">${t.paymentMethod}</div>
+          <div class="value">${lastPayment ? t.paymentMethodLabels[lastPayment.method] : t.dash}</div>
         </div>
       </div>
     </div>
 
-    <div class="thanks">&#9829; Thank you for choosing our clinic &#9829;</div>
+    <div class="thanks">${t.thanks}</div>
 
+    <!-- Address / phone / mobile are always Arabic, regardless of invoice locale. -->
     <div class="footer-box">
-      <div class="clinic-name-ar">${CLINIC_NAME_AR}</div>
-      <div class="clinic-name-en">${CLINIC_NAME_EN}</div>
-      <div class="line-ar">${CLINIC_ADDRESS_AR}</div>
-      <div class="line-en">${CLINIC_ADDRESS_EN}</div>
-      <div class="line-ar">${CLINIC_PHONE_AR}</div>
-      <div class="line-en">${CLINIC_PHONE_EN}</div>
-      <div class="line-ar">${CLINIC_MOBILE_AR}</div>
-      <div class="line-en">${CLINIC_MOBILE_EN}</div>
+      <div class="clinic-name-primary">${fixed.clinicNameLine1}</div>
+      <div class="clinic-name-secondary">${fixed.clinicNameLine2}</div>
+      <div class="line">${CONTACT_FIXED.address}</div>
+      <div class="line">${CONTACT_FIXED.phone}</div>
+      <div class="line">${CONTACT_FIXED.mobile}</div>
     </div>
   </div>
 </body>
 </html>`;
+}
+
+// ── WhatsApp share link (frontend opens this in a new tab / window.open) ──
+// This only pre-fills a message; WhatsApp does not allow attaching a file via
+// a wa.me link for security reasons, so the user still has to attach the
+// downloaded PDF manually inside the chat that opens.
+export function buildWhatsAppShareUrl(
+  patientPhone: string,
+  invoiceNumber: string,
+  locale: InvoiceLocale = 'ar',
+): string {
+  const digitsOnly = patientPhone.replace(/[^\d]/g, '');
+  const message =
+    locale === 'ar'
+      ? `مرفق فاتورتكم رقم ${invoiceNumber} من مركز العيادات التخصصية.`
+      : `Attached is your invoice No. ${invoiceNumber} from Specialized Clinics Center.`;
+  return `https://wa.me/${digitsOnly}?text=${encodeURIComponent(message)}`;
 }
