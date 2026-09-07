@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { invoicesService, Invoice } from '../services/invoices.service';
 import { useTranslation } from 'react-i18next';
 import { formatDate as formatDateUtil } from '../utils/dateFormat';
+import { formatMoney, getStatusConfig } from '../utils/formatters';
 
 export default function InvoicesList() {
   const { t, i18n } = useTranslation();
@@ -18,29 +19,19 @@ export default function InvoicesList() {
   const invoices = data?.data || [];
 
   const getStatusBadge = (status: Invoice['status']) => {
-    const config: Record<string, { bg: string; text: string; label: string }> = {
-      DRAFT: { bg: 'bg-gray-100', text: 'text-gray-700', label: t('invoices.statusDraft') },
-      ISSUED: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('invoices.statusIssued') },
-      VOID: { bg: 'bg-red-100', text: 'text-red-700', label: t('invoices.statusVoid') },
-    };
-    const c = config[status] || config.DRAFT;
+    const config = getStatusConfig(status, t);
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.bg} ${c.text}`}>
-        {c.label}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.label}
       </span>
     );
   };
 
   const getPaymentBadge = (status: Invoice['paymentStatus']) => {
-    const config: Record<string, { bg: string; text: string; label: string }> = {
-      UNPAID: { bg: 'bg-red-100', text: 'text-red-700', label: t('invoices.unpaid') },
-      PARTIALLY_PAID: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: t('invoices.partiallyPaid') },
-      PAID: { bg: 'bg-green-100', text: 'text-green-700', label: t('invoices.paidInFull') },
-    };
-    const c = config[status] || config.UNPAID;
+    const config = getStatusConfig(status, t);
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${c.bg} ${c.text}`}>
-        {c.label}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        {config.label}
       </span>
     );
   };
@@ -110,13 +101,13 @@ export default function InvoicesList() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.number')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('visits.patient')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.total')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.remaining')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.invoiceStatus')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('invoices.paymentStatusLabel')}</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700">{t('common.date')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('invoices.number')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('visits.patient')}</th>
+                  <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700">{t('invoices.total')}</th>
+                  <th className="px-6 py-3 text-end text-sm font-semibold text-gray-700">{t('invoices.remaining')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('invoices.invoiceStatus')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('invoices.paymentStatusLabel')}</th>
+                  <th className="px-6 py-3 text-start text-sm font-semibold text-gray-700">{t('common.date')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -129,10 +120,10 @@ export default function InvoicesList() {
                     <td className="px-6 py-4 font-medium text-gray-900">{invoice.invoiceNumber}</td>
                     <td className="px-6 py-4 text-gray-900">{invoice.patient?.fullNameAr}</td>
                     <td className="px-6 py-4 text-gray-900 font-medium">
-                      {parseFloat(invoice.total).toFixed(3)} {t('common.currency')}
+                      {formatMoney(invoice.total, t('common.currency'))}
                     </td>
                     <td className="px-6 py-4 text-gray-900">
-                      {parseFloat(invoice.remaining).toFixed(3)} {t('common.currency')}
+                      {formatMoney(invoice.remaining, t('common.currency'))}
                     </td>
                     <td className="px-6 py-4">{getStatusBadge(invoice.status)}</td>
                     <td className="px-6 py-4">{getPaymentBadge(invoice.paymentStatus)}</td>

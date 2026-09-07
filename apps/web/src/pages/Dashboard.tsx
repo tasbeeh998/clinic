@@ -35,28 +35,28 @@ export default function Dashboard() {
   const weekAgo = formatDateLocal(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 
   // Fetch total patients count
-  const { data: patientsData } = useQuery({
+  const { data: patientsData, isLoading: patientsLoading, error: patientsError } = useQuery({
     queryKey: ['patients', 'count'],
     queryFn: () => patientsService.getPatients(undefined, undefined, 1, 1),
     select: (data) => data.meta.total,
   });
 
   // Fetch today's appointments count
-  const { data: appointmentsData } = useQuery({
+  const { data: appointmentsData, isLoading: appointmentsLoading, error: appointmentsError } = useQuery({
     queryKey: ['appointments', 'today', today],
     queryFn: () => appointmentsService.getAppointments(today, undefined, undefined, 1, 1),
     select: (data) => data.meta.total,
   });
 
   // Fetch week visits count
-  const { data: visitsData } = useQuery({
+  const { data: visitsData, isLoading: visitsLoading, error: visitsError } = useQuery({
     queryKey: ['visits', 'week', weekAgo, today],
     queryFn: () => visitsService.getVisits(undefined, undefined, undefined, undefined, weekAgo, today, undefined, 1, 1),
     select: (data) => data.meta.total,
   });
 
   // Fetch outstanding balance (admin only - reports API is admin-only)
-  const { data: reportsData } = useQuery({
+  const { data: reportsData, isLoading: reportsLoading, error: reportsError } = useQuery({
     queryKey: ['reports', 'summary'],
     queryFn: () => reportsService.getSummary(),
     enabled: isAdmin,
@@ -127,22 +127,30 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 divide-x rtl:divide-x-reverse divide-[#E2E8F0]">
               <StatCard
                 label={t('dashboard.totalPatients')}
-                value={patientsData ?? 0}
+                value={patientsData}
+                isLoading={patientsLoading}
+                error={!!patientsError}
                 icon={UsersRound}
               />
               <StatCard
                 label={t('dashboard.todayAppointments')}
-                value={appointmentsData ?? 0}
+                value={appointmentsData}
+                isLoading={appointmentsLoading}
+                error={!!appointmentsError}
                 icon={CalendarDays}
               />
               <StatCard
                 label={t('dashboard.weekVisits')}
-                value={visitsData ?? 0}
+                value={visitsData}
+                isLoading={visitsLoading}
+                error={!!visitsError}
                 icon={ClipboardList}
               />
               <StatCard
                 label={t('dashboard.totalOutstanding')}
-                value={isAdmin ? (reportsData ?? 0) : null}
+                value={isAdmin ? reportsData : null}
+                isLoading={isAdmin ? reportsLoading : false}
+                error={isAdmin ? !!reportsError : false}
                 icon={Wallet}
               />
             </div>

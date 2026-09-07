@@ -45,7 +45,9 @@
     "showPassword": "Show password",
     "hidePassword": "Hide password",
     "markAllRead": "Mark all read",
-    "noNotifications": "No notifications"
+    "noNotifications": "No notifications",
+    "confirm": "Confirm",
+    "processing": "Processing..."
   },
   "roles": {
     "admin": "Admin",
@@ -289,7 +291,8 @@
     "enterValidAmount": "Enter a valid amount",
     "reversePayment": "Reverse Payment",
     "reversalReasonPlaceholder": "Reversal reason",
-    "confirmReversal": "Confirm"
+    "confirmReversal": "Confirm",
+    "reverseConfirm": "This will reverse the payment and adjust the invoice balance. This action cannot be undone."
   },
   "appointments": {
     "loadError": "Failed to load appointment data",
@@ -353,7 +356,8 @@
     "exportPdf": "Export PDF",
     "exportExcel": "Export Excel",
     "exporting": "Exporting...",
-    "exportError": "Failed to export report"
+    "exportError": "Failed to export report",
+    "exportFailed": "Failed to export report. Please try again."
   },
   "settings": {
     "subtitle": "Manage system settings, permissions, notifications, backups, and security",

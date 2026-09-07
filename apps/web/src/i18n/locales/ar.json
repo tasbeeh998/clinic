@@ -45,7 +45,9 @@
     "showPassword": "إظهار كلمة المرور",
     "hidePassword": "إخفاء كلمة المرور",
     "markAllRead": "تحديد الكل كمقروء",
-    "noNotifications": "لا توجد إشعارات"
+    "noNotifications": "لا توجد إشعارات",
+    "confirm": "تأكيد",
+    "processing": "جاري المعالجة..."
   },
   "roles": {
     "admin": "مدير النظام",
@@ -289,7 +291,8 @@
     "enterValidAmount": "أدخل مبلغاً صحيحاً",
     "reversePayment": "إلغاء الدفعة",
     "reversalReasonPlaceholder": "سبب الإلغاء",
-    "confirmReversal": "تأكيد"
+    "confirmReversal": "تأكيد",
+    "reverseConfirm": "سيتم إلغاء هذه الدفعة وتعديل رصيد الفاتورة. هذا الإجراء لا يمكن التراجع عنه."
   },
   "appointments": {
     "loadError": "فشل في تحميل بيانات المواعيد",
@@ -353,7 +356,8 @@
     "exportPdf": "تصدير PDF",
     "exportExcel": "تصدير Excel",
     "exporting": "جارِ التصدير...",
-    "exportError": "فشل تصدير التقرير"
+    "exportError": "فشل تصدير التقرير",
+    "exportFailed": "فشل تصدير التقرير. يرجى المحاولة مرة أخرى."
   },
   "settings": {
     "subtitle": "إدارة إعدادات النظام والصلاحيات والتنبيهات والنسخ الاحتياطي والأمان",
